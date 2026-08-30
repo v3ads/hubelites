@@ -3,17 +3,41 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
 
-export async function requestMagicLink(formData: FormData) {
+function loginUrl(params: Record<string, string>) {
+  const search = new URLSearchParams(params);
+  return `/login?${search.toString()}`;
+}
+
+export async function requestLoginCode(formData: FormData) {
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
-  if (!email) redirect('/login?error=email_required');
+  if (!email) redirect(loginUrl({ error: 'email_required' }));
 
   const supabase = await createClient();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${appUrl}/auth/confirm?next=/dashboard` },
+    options: { shouldCreateUser: true },
   });
 
-  if (error) redirect(`/login?error=${encodeURIComponent(error.message)}`);
-  redirect('/login?sent=1');
+  if (error) redirect(loginUrl({ error: error.message, email }));
+  redirect(loginUrl({ sent: '1', email }));
+}
+
+export async function verifyLoginCode(formData: FormData) {
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+  const token = String(formData.get('token') ?? '').replace(/\s+/g, '');
+
+  if (!email) redirect(loginUrl({ error: 'email_required' }));
+  if (!/^\d{6,8}$/.test(token)) {
+    redirect(loginUrl({ sent: '1', email, error: 'invalid_code' }));
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'email',
+  });
+
+  if (error) redirect(loginUrl({ sent: '1', email, error: error.message }));
+  redirect('/dashboard');
 }
