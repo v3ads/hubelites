@@ -1,29 +1,50 @@
-# HubElites environment setup
+# HubElites Setup
 
-## Supabase
+## Local development
 
-1. Create a dedicated `HubElites` Supabase project in the chosen organization.
-2. Apply `supabase/migrations/001_initial_schema.sql`.
-3. Add the project URL and publishable key to deployment environment variables.
-4. Configure Supabase Auth Site URL and allowed redirect URLs for local, preview, and production URLs.
-5. Configure Brevo as Supabase Auth custom SMTP.
-6. Set the Magic Link email template to use the SSR token-hash callback pattern:
-   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink&next=/dashboard`
-7. After the platform-owner account first authenticates, promote that profile to `is_super_admin = true` using a trusted server-side/admin operation. Do not hard-code the owner email in source.
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
 
-## Brevo
+## Required public environment variables
 
-Use Brevo first for authentication email delivery. Add API-based marketing email features only when campaign sending enters scope.
+- `NEXT_PUBLIC_APP_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
-## Media providers
+## Server-only environment variables
 
-All provider keys remain server-side only:
-- OpenRouter
-- HeyGen
-- Higgsfield
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPER_ADMIN_EMAIL`
+- `BREVO_API_KEY`
+- `OPENROUTER_API_KEY`
+- `HEYGEN_API_KEY`
+- `HIGGSFIELD_API_KEY`
 
-The browser never receives provider credentials. Expensive generation is credit-gated and invoked through trusted server routes/Edge Functions.
+Never expose server-only keys through `NEXT_PUBLIC_*` variables.
 
-## Vercel
+## Database
 
-Use separate preview/production environment values where appropriate. Connect `hubelites.com` only after the first preview deployment is accepted.
+Live Supabase project: `HubElites` in `us-east-1`.
+
+The initial schema is in:
+
+`supabase/migrations/001_initial_schema.sql`
+
+It provides tenant isolation, Super Admin visibility, campaign/media/credit primitives, Mission Brain storage, prospects, analytics and audit logging.
+
+## Authentication
+
+The current app uses Supabase passwordless OTP/magic-link authentication. Production email delivery is intended to be customized through Brevo. Configure production redirect URLs before enabling external users.
+
+## Build validation
+
+This execution environment has no shell DNS access to GitHub or npm. Development therefore uses the connected GitHub API for repository synchronization, and GitHub Actions for network-enabled dependency installation and production build validation.
+
+The workflow is `.github/workflows/ci.yml` and runs on pushes and pull requests to `main`.
+
+## Deployment
+
+Next target: Vercel. Configure the public Supabase variables and server-only keys in the Vercel project rather than committing them to GitHub.
