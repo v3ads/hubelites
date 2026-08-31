@@ -1,230 +1,570 @@
-import { ThemeToggle } from '@/components/theme-toggle';
+import { Icon, type IconName } from '@/components/icon';
+import { SiteHeader } from '@/components/marketing/site-header';
+import { SiteFooter } from '@/components/marketing/site-footer';
+import { StudioPreview } from '@/components/marketing/studio-preview';
 
-function Icon({ name }: { name: 'brain' | 'video' | 'send' | 'chart' | 'spark' | 'target' | 'shield' | 'check' | 'arrow' }) {
-  const common = { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true } as const;
-  switch (name) {
-    case 'brain':
-      return <svg {...common}><path d="M9.5 4.6A3.1 3.1 0 0 0 4.7 7.2a3.3 3.3 0 0 0 .6 5.7A3.5 3.5 0 0 0 9 17.8V20M14.5 4.6a3.1 3.1 0 0 1 4.8 2.6 3.3 3.3 0 0 1-.6 5.7 3.5 3.5 0 0 1-3.7 4.9V20M9.5 6.5c1 .2 1.8.9 2.5 1.8.7-.9 1.5-1.6 2.5-1.8M12 8.3V20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-    case 'video':
-      return <svg {...common}><rect x="3" y="5" width="13" height="14" rx="3" stroke="currentColor" strokeWidth="1.7"/><path d="m16 9 5-2v10l-5-2V9Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><path d="m8 9 4 3-4 3V9Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>;
-    case 'send':
-      return <svg {...common}><path d="m4 4 16 8-16 8 3-8-3-8Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><path d="M7 12h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>;
-    case 'chart':
-      return <svg {...common}><path d="M4 19V9M10 19V5M16 19v-7M22 19H2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="m4 7 5-3 6 4 5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-    case 'spark':
-      return <svg {...common}><path d="M12 2.5 13.9 8l5.6 1.9-5.6 1.9L12 17.5l-1.9-5.7-5.6-1.9L10.1 8 12 2.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><path d="m19 15 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z" fill="currentColor"/></svg>;
-    case 'target':
-      return <svg {...common}><circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7"/><circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.7"/><path d="m14.5 9.5 6-6M17 3.5h3.5V7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-    case 'shield':
-      return <svg {...common}><path d="M12 3 5 6v5.2c0 4.4 2.8 7.8 7 9.8 4.2-2 7-5.4 7-9.8V6l-7-3Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-    case 'check':
-      return <svg {...common}><path d="m5 12 4 4 10-10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-    case 'arrow':
-      return <svg {...common}><path d="M5 12h14M14 7l5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-    default:
-      return null;
-  }
-}
-
-const engines = [
-  { icon: 'target' as const, number: '01', title: 'Audience Intelligence', copy: 'Choose who you want to reach. HubElites sharpens the angle, pain points, objections and language before a single asset is created.' },
-  { icon: 'brain' as const, number: '02', title: 'Campaign Brain', copy: 'One strategy becomes a coordinated weekly campaign instead of a pile of unrelated AI outputs.' },
-  { icon: 'video' as const, number: '03', title: 'AI Media Studio', copy: 'Generate short-form video concepts, scripts, social posts, emails and graphics with a consistent campaign message.' },
-  { icon: 'send' as const, number: '04', title: 'Distribution Layer', copy: 'Approve, export and eventually publish across your channels while every call to action points to your Ambassador funnel.' },
-  { icon: 'chart' as const, number: '05', title: 'Learning Loop', copy: 'Track what earns attention and clicks, then feed those signals into the next campaign instead of starting from zero.' },
+const channels: { label: string; icon: IconName }[] = [
+  { label: 'Short-form video', icon: 'video' },
+  { label: 'Social posts', icon: 'send' },
+  { label: 'Email sequences', icon: 'mail' },
+  { label: 'Campaign graphics', icon: 'image' },
+  { label: 'Content calendar', icon: 'calendar' },
+  { label: 'Prospect outreach', icon: 'users' },
+  { label: 'Funnel traffic', icon: 'target' },
+  { label: 'Performance signals', icon: 'chart' },
 ];
 
-const oldWay = ['Blank-page prompting every week', 'Generic content aimed at everyone', 'Disconnected posts, videos and emails', 'Manual campaign planning and repetition', 'No consistent learning loop'];
-const eliteWay = ['Audience-first campaign intelligence', 'One coordinated message across every asset', 'Video, social and email generated together', 'A repeatable weekly growth workflow', 'Performance signals improve what comes next'];
+const engines: { number: string; icon: IconName; tone: string; title: string; copy: string }[] = [
+  {
+    number: '01',
+    icon: 'target',
+    tone: 'ichip-blue',
+    title: 'Audience Intelligence',
+    copy: 'Pick who you want to reach. HubElites sharpens the angle, pain points, objections and language before a single asset exists.',
+  },
+  {
+    number: '02',
+    icon: 'brain',
+    tone: 'ichip-violet',
+    title: 'Campaign Brain',
+    copy: 'One strategic decision becomes a coordinated weekly campaign instead of a pile of unrelated AI outputs.',
+  },
+  {
+    number: '03',
+    icon: 'wand',
+    tone: 'ichip-magenta',
+    title: 'AI Media Studio',
+    copy: 'Video concepts, scripts, social posts, emails and graphics generated together, carrying one campaign message.',
+  },
+  {
+    number: '04',
+    icon: 'send',
+    tone: 'ichip-cyan',
+    title: 'Distribution Layer',
+    copy: 'Approve, schedule, export and publish across your channels while every CTA points at your Ambassador funnel.',
+  },
+  {
+    number: '05',
+    icon: 'orbit',
+    tone: 'ichip-lime',
+    title: 'Learning Loop',
+    copy: 'Track what earns attention and clicks, then feed those signals into next week instead of starting from zero.',
+  },
+];
+
+const oldWay = [
+  'Blank-page prompting every single week',
+  'Generic content aimed at everyone',
+  'Disconnected posts, videos and emails',
+  'Manual planning and endless repetition',
+  'No memory of what actually worked',
+];
+
+const newWay = [
+  'Audience-first campaign intelligence',
+  'One message carried across every asset',
+  'Video, social and email generated together',
+  'A repeatable weekly growth workflow',
+  'Performance signals shape what comes next',
+];
+
+const faqs = [
+  {
+    q: 'Does HubElites replace my eStage funnel?',
+    a: 'No. Your Ambassador domain and syndicated Mission 1000 experience stay exactly where they are — registration, webinar, checkout and attribution all still happen there. HubElites owns the layer in front of it: audience, strategy, media, distribution and optimization.',
+  },
+  {
+    q: 'What do I actually get each week?',
+    a: 'A campaign, not a pile of outputs: an audience, an angle, short-form video scripts and concepts, social posts, email angles, graphics and a calendar — all pointing at the same destination with the same message.',
+  },
+  {
+    q: 'Do I need to be good at prompting?',
+    a: 'No. You make one decision — who you want to reach — and the Campaign Brain handles positioning, hooks, objections, cadence and calls to action. You review and approve rather than write prompts.',
+  },
+  {
+    q: 'How is media generation billed?',
+    a: 'Media runs on HubElites credits. Every generation is estimated and reserved before it starts, so nothing expensive begins without a sufficient balance and you always see the cost in credits rather than provider pricing.',
+  },
+  {
+    q: 'Is HubElites affiliated with eStage?',
+    a: 'HubElites is an independent platform built for eStage Ambassadors. It is not affiliated with, sponsored by, or endorsed by eStage, and it does not use eStage branding.',
+  },
+];
 
 export default function HomePage() {
   return (
-    <main className="marketing-shell">
-      <div className="marketing-ambient marketing-ambient-one" />
-      <div className="marketing-ambient marketing-ambient-two" />
+    <div className="site">
+      <SiteHeader />
 
-      <header className="marketing-nav">
-        <div className="marketing-container nav-inner">
-          <a className="brand brand-premium" href="/" aria-label="HubElites home">
-            <span className="brand-symbol"><span>H</span></span>
-            <span>HubElites</span>
-          </a>
-          <nav className="marketing-links" aria-label="Primary navigation">
-            <a href="#system">The System</a>
-            <a href="#engines">Engines</a>
-            <a href="#workflow">Workflow</a>
-            <a href="#difference">Why HubElites</a>
-          </nav>
-          <div className="marketing-actions">
-            <ThemeToggle />
-            <a className="btn btn-quiet" href="/login">Log in</a>
-            <a className="btn btn-primary premium-cta" href="/onboarding">Start building <span>→</span></a>
-          </div>
-        </div>
-      </header>
-
-      <section className="marketing-container premium-hero">
-        <div className="hero-copy">
-          <div className="signal-badge"><span className="signal-dot" /> Built for eStage Ambassadors</div>
-          <h1>Turn your Ambassador domain into an <span className="gradient-text">AI growth system.</span></h1>
-          <p className="hero-lead">HubElites thinks like a strategist, creates like a content team, and turns one audience decision into a coordinated week of marketing that drives people to your own syndicated Mission 1000 funnel.</p>
-          <div className="hero-actions">
-            <a className="btn btn-primary btn-large" href="/onboarding">Build my first campaign <span className="btn-icon"><Icon name="arrow" /></span></a>
-            <a className="btn btn-glass btn-large" href="#system">See how it works</a>
-          </div>
-          <div className="hero-proof-row">
-            <div><strong>1</strong><span>audience decision</span></div>
-            <i />
-            <div><strong>1</strong><span>campaign brain</span></div>
-            <i />
-            <div><strong>12+</strong><span>ready-to-use assets</span></div>
-          </div>
-          <p className="independent-note">Independent platform designed for eStage Ambassadors. Not affiliated with or endorsed by eStage.</p>
-        </div>
-
-        <div className="hero-stage" aria-label="HubElites campaign interface preview">
-          <div className="stage-glow" />
-          <div className="hero-app-window">
-            <div className="app-window-top">
-              <div className="app-window-brand"><span className="mini-symbol">H</span><span>Campaign Studio</span></div>
-              <div className="app-window-status"><span /> AI online</div>
+      <main id="main">
+        {/* ---------------- Hero ---------------- */}
+        <section className="container hero">
+          <div className="hero-copy">
+            <div className="hero-badge">
+              <b>
+                <span className="dot" /> Founding build
+              </b>
+              Built for eStage Ambassadors
+              <Icon name="arrow" />
             </div>
-            <div className="app-window-grid">
-              <aside className="app-mini-sidebar">
-                <span className="mini-nav active"><i /> Campaign</span>
-                <span className="mini-nav"><i /> Content</span>
-                <span className="mini-nav"><i /> Calendar</span>
-                <span className="mini-nav"><i /> Analytics</span>
-              </aside>
-              <div className="campaign-canvas">
-                <div className="canvas-heading">
-                  <div><span className="micro-label">WEEKLY CAMPAIGN</span><h3>Mission 1000 · Coaches</h3></div>
-                  <span className="campaign-ready">Ready</span>
-                </div>
-                <div className="strategy-strip">
-                  <div><span>Audience</span><b>Course creators</b></div>
-                  <div><span>Angle</span><b>Stop renting your audience</b></div>
-                  <div><span>Goal</span><b>Funnel visits</b></div>
-                </div>
-                <div className="content-preview-grid">
-                  <div className="video-preview">
-                    <div className="video-preview-top"><span>SHORT 01</span><span>00:28</span></div>
-                    <div className="video-orb"><span className="play-triangle" /></div>
-                    <div className="video-copy"><b>“What if your next audience already exists?”</b><span>Vertical video · 9:16</span></div>
-                  </div>
-                  <div className="asset-stack">
-                    <div className="asset-line"><span className="asset-line-icon"><Icon name="video" /></span><div><b>3 short videos</b><span>Scripted & branded</span></div><em>100%</em></div>
-                    <div className="asset-line"><span className="asset-line-icon"><Icon name="send" /></span><div><b>5 social posts</b><span>Platform-ready copy</span></div><em>100%</em></div>
-                    <div className="asset-line"><span className="asset-line-icon"><Icon name="spark" /></span><div><b>2 email angles</b><span>Nurture + invitation</span></div><em>100%</em></div>
-                  </div>
-                </div>
-                <div className="canvas-footer"><span><i className="pulse-dot" /> Campaign intelligence complete</span><button>Approve campaign →</button></div>
+
+            <h1 className="display">
+              Turn your Ambassador domain into an <span className="grad-text">AI growth system.</span>
+            </h1>
+
+            <p className="lead">
+              HubElites thinks like a strategist and creates like a content team. One audience decision becomes a
+              coordinated week of video, social, email and outreach — all driving traffic into your own Mission 1000
+              funnel.
+            </p>
+
+            <div className="hero-cta">
+              <a className="btn btn-primary btn-lg" href="/onboarding">
+                Build my first campaign
+                <Icon name="arrow" />
+              </a>
+              <a className="btn btn-glass btn-lg" href="#system">
+                See how it works
+              </a>
+            </div>
+
+            <p className="hero-note">
+              <Icon name="shield" />
+              Passwordless sign-in · Your funnel, your attribution
+            </p>
+
+            <div className="hero-stats">
+              <div>
+                <strong>1</strong>
+                <span>Audience decision</span>
+              </div>
+              <div>
+                <strong>1</strong>
+                <span>Campaign brain</span>
+              </div>
+              <div>
+                <strong>12+</strong>
+                <span>Ready-to-use assets</span>
+              </div>
+              <div>
+                <strong>5</strong>
+                <span>Engines in the loop</span>
               </div>
             </div>
           </div>
-          <div className="floating-card floating-card-top"><span className="float-icon"><Icon name="spark" /></span><div><small>AI recommendation</small><b>Coach audience is strongest</b></div></div>
-          <div className="floating-card floating-card-bottom"><small>Tracked funnel visits</small><div><strong>147</strong><span>+23%</span></div></div>
-        </div>
-      </section>
 
-      <section className="marketing-container trust-strip" id="system">
-        <div className="trust-kicker">FROM ONE DECISION TO A COMPLETE CAMPAIGN</div>
-        <div className="trust-flow">
-          <div><span className="trust-icon"><Icon name="target" /></span><b>Choose an audience</b><small>Coaches, creators, local businesses, consultants</small></div>
-          <span className="trust-arrow">→</span>
-          <div><span className="trust-icon"><Icon name="brain" /></span><b>Build the strategy</b><small>Angle, hooks, objections, CTAs and cadence</small></div>
-          <span className="trust-arrow">→</span>
-          <div><span className="trust-icon"><Icon name="spark" /></span><b>Create the assets</b><small>Video, posts, emails and graphics in one voice</small></div>
-          <span className="trust-arrow">→</span>
-          <div><span className="trust-icon"><Icon name="send" /></span><b>Drive the traffic</b><small>Every CTA points to your own Mission destination</small></div>
-        </div>
-      </section>
+          <StudioPreview />
+        </section>
 
-      <section className="premium-section marketing-container" id="engines">
-        <div className="section-intro split-intro">
-          <div><span className="section-kicker">THE HUBELITES SYSTEM</span><h2>Five engines. <span className="gradient-text">One growth loop.</span></h2></div>
-          <p>Most AI tools give you outputs. HubElites is designed around a repeatable operating system: decide who matters, build a campaign, create the media, distribute it, learn, repeat.</p>
+        {/* ---------------- Channel marquee ---------------- */}
+        <div className="marquee" aria-hidden="true">
+          <div className="marquee-track">
+            {[...channels, ...channels].map((channel, index) => (
+              <span key={`${channel.label}-${index}`}>
+                <Icon name={channel.icon} />
+                {channel.label}
+              </span>
+            ))}
+          </div>
         </div>
-        <div className="engine-grid">
-          {engines.map((engine, index) => (
-            <article className={`engine-card ${index === 0 ? 'engine-card-featured' : ''}`} key={engine.number}>
-              <div className="engine-card-top"><span className="engine-icon"><Icon name={engine.icon} /></span><span className="engine-number">{engine.number}</span></div>
-              <h3>{engine.title}</h3>
-              <p>{engine.copy}</p>
-              <div className="engine-line" />
+
+        {/* ---------------- Bento: the system ---------------- */}
+        <section className="container section" id="system">
+          <div className="section-head">
+            <span className="kicker">From one decision to a complete campaign</span>
+            <h2 className="h2">
+              Most AI tools give you outputs. <span className="grad-text">HubElites gives you a system.</span>
+            </h2>
+            <p className="lead">
+              Every part of the platform exists to answer one question: what should this Ambassador publish this week,
+              to whom, and why?
+            </p>
+          </div>
+
+          <div className="bento">
+            <article className="card card-hover span-4 bento-tile-accent">
+              <span className="ichip ichip-blue">
+                <Icon name="target" />
+              </span>
+              <h3>Choose an audience, not a prompt</h3>
+              <p>
+                Coaches, course creators, consultants or local businesses. HubElites researches the angle, objections
+                and language for that audience before anything is generated.
+              </p>
+              <div className="bento-visual chip-cloud">
+                <span className="hot">Coaches</span>
+                <span className="hot">Course creators</span>
+                <span>Consultants</span>
+                <span>Local business owners</span>
+                <span>Agency owners</span>
+                <span>Real estate</span>
+              </div>
             </article>
-          ))}
-        </div>
-      </section>
 
-      <section className="premium-section workflow-section" id="workflow">
-        <div className="marketing-container workflow-layout">
-          <div className="workflow-copy">
-            <span className="section-kicker">CAMPAIGN AUTOPILOT</span>
-            <h2>Your weekly marketing meeting — <span className="gradient-text">without the meeting.</span></h2>
-            <p>Open HubElites, choose who you want to reach, and let the system turn that decision into a focused campaign with a coherent message across every channel.</p>
-            <div className="workflow-points">
-              <div><span><Icon name="check" /></span><div><b>Strategy before content</b><small>The campaign angle is decided before generation starts.</small></div></div>
-              <div><span><Icon name="check" /></span><div><b>One message, many formats</b><small>Short video, posts and email all reinforce the same idea.</small></div></div>
-              <div><span><Icon name="check" /></span><div><b>Your funnel stays yours</b><small>HubElites creates demand; your syndicated eStage funnel captures and attributes it.</small></div></div>
-            </div>
-            <a className="text-link" href="/onboarding">Create this week’s campaign <Icon name="arrow" /></a>
-          </div>
-          <div className="workflow-visual">
-            <div className="command-card">
-              <div className="command-top"><span className="command-ai"><Icon name="spark" /></span><div><small>HUBELITES AI</small><b>Campaign brief</b></div><span className="command-status">Complete</span></div>
-              <div className="command-prompt">Promote Mission 1000 to <b>coaches who are tired of depending on rented social audiences.</b></div>
-              <div className="command-thinking">
-                <span>Audience signal</span><strong>Ownership anxiety</strong>
-                <span>Primary hook</span><strong>Build what you control</strong>
-                <span>CTA destination</span><strong>yourdomain.com/mission1000</strong>
+            <article className="card card-hover">
+              <span className="ichip ichip-violet">
+                <Icon name="calendar" />
+              </span>
+              <h3>A week that plans itself</h3>
+              <p>Cadence, formats and posting days arrive as a calendar, not a to-do list.</p>
+              <div className="bento-visual mini-calendar" aria-hidden="true">
+                <i className="b1" />
+                <i />
+                <i className="b2" />
+                <i className="b3" />
+                <i />
+                <i className="b4" />
+                <i className="b1" />
+                <i />
+                <i className="b3" />
+                <i />
+                <i className="b2" />
+                <i className="b1" />
+                <i />
+                <i />
               </div>
-              <div className="command-output-title"><span>Campaign generated</span><span>12 assets</span></div>
-              <div className="command-output-grid">
-                <div><span>03</span><small>Videos</small></div><div><span>05</span><small>Social posts</small></div><div><span>02</span><small>Emails</small></div><div><span>02</span><small>Graphics</small></div>
+            </article>
+
+            <article className="card card-hover">
+              <span className="ichip ichip-magenta">
+                <Icon name="video" />
+              </span>
+              <h3>Media that matches the message</h3>
+              <p>Short-form video, graphics and copy generated from the same campaign brief.</p>
+              <div className="bento-visual">
+                <div className="reel" style={{ minHeight: 132 }}>
+                  <div className="reel-top">
+                    <span>SHORT 02</span>
+                    <span>00:34</span>
+                  </div>
+                  <div className="reel-copy">
+                    <b>&ldquo;Build what you actually control.&rdquo;</b>
+                    <span>Vertical video · 9:16</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article className="card card-hover span-4">
+              <span className="ichip ichip-cyan">
+                <Icon name="credit" />
+              </span>
+              <h3>Credits with guardrails</h3>
+              <p>
+                Generation is estimated and reserved before it runs, so an expensive render never starts without a
+                balance behind it. You see HubElites credits, never provider pricing.
+              </p>
+              <div className="bento-visual credit-visual">
+                <div className="row">
+                  <span>Campaign estimate</span>
+                  <b>28 credits</b>
+                </div>
+                <div className="meter meter-spectrum">
+                  <i style={{ width: '34%' }} />
+                </div>
+                <div className="row">
+                  <span>Balance after approval</span>
+                  <b>84 credits</b>
+                </div>
+              </div>
+            </article>
+
+            <article className="card card-hover span-2">
+              <span className="ichip ichip-emerald">
+                <Icon name="link" />
+              </span>
+              <h3>Every CTA points home</h3>
+              <p>Assets carry your Mission 1000 destination, so the traffic lands where you get credit.</p>
+            </article>
+
+            <article className="card card-hover span-4">
+              <span className="ichip ichip-lime">
+                <Icon name="chart" />
+              </span>
+              <h3>Every week starts smarter</h3>
+              <p>
+                Clicks and funnel visits feed the next brief, so the system compounds instead of resetting each Monday.
+              </p>
+              <div className="bento-visual stat-line" aria-hidden="true">
+                {[22, 30, 26, 38, 34, 44, 40, 52, 48, 58, 54, 66, 62, 74, 70, 82, 78, 92].map((height, index) => (
+                  <i key={index} style={{ height: `${height}%` }} />
+                ))}
+              </div>
+            </article>
+          </div>
+        </section>
+
+        {/* ---------------- Engines ---------------- */}
+        <section className="container section-tight" id="engines">
+          <div className="section-head">
+            <span className="kicker">The HubElites operating loop</span>
+            <h2 className="h2">
+              Five engines. <span className="grad-text">One growth loop.</span>
+            </h2>
+          </div>
+
+          <div className="loop">
+            {engines.map((engine) => (
+              <article className="loop-step" key={engine.number}>
+                <span className={`ichip ${engine.tone}`}>
+                  <Icon name={engine.icon} />
+                </span>
+                <span className="badge-num">{engine.number}</span>
+                <h3>{engine.title}</h3>
+                <p>{engine.copy}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {/* ---------------- Workflow ---------------- */}
+        <section className="container section" id="workflow">
+          <div className="showcase">
+            <div>
+              <span className="kicker">Campaign autopilot</span>
+              <h2 className="h2" style={{ marginTop: 18 }}>
+                Your weekly marketing meeting — <span className="grad-text">without the meeting.</span>
+              </h2>
+              <p className="lead" style={{ marginTop: 20 }}>
+                Open HubElites, say who you want to reach, and the system turns that into a focused campaign with one
+                coherent message across every channel.
+              </p>
+
+              <div className="showcase-points">
+                <div>
+                  <span className="ichip ichip-sm ichip-emerald">
+                    <Icon name="check" />
+                  </span>
+                  <div>
+                    <b>Strategy before content</b>
+                    <small>The angle is decided before a single asset is generated.</small>
+                  </div>
+                </div>
+                <div>
+                  <span className="ichip ichip-sm ichip-emerald">
+                    <Icon name="check" />
+                  </span>
+                  <div>
+                    <b>One message, many formats</b>
+                    <small>Short video, posts and email all reinforce the same idea.</small>
+                  </div>
+                </div>
+                <div>
+                  <span className="ichip ichip-sm ichip-emerald">
+                    <Icon name="check" />
+                  </span>
+                  <div>
+                    <b>Your funnel stays yours</b>
+                    <small>HubElites creates demand; your syndicated funnel captures and attributes it.</small>
+                  </div>
+                </div>
+              </div>
+
+              <a className="btn btn-outline-grad btn-lg" href="/onboarding" style={{ marginTop: 30 }}>
+                Create this week&apos;s campaign
+                <Icon name="arrow-up-right" />
+              </a>
+            </div>
+
+            <div className="brief">
+              <div className="brief-head">
+                <span className="ichip ichip-violet">
+                  <Icon name="brain" />
+                </span>
+                <div>
+                  <small>HubElites AI</small>
+                  <b>Campaign brief</b>
+                </div>
+                <span className="pill pill-live">
+                  <span className="dot" /> Complete
+                </span>
+              </div>
+
+              <div className="brief-prompt">
+                Promote Mission 1000 to <b>coaches who are tired of depending on rented social audiences.</b>
+              </div>
+
+              <div className="brief-rows">
+                <div>
+                  <span>Audience signal</span>
+                  <strong>Ownership anxiety</strong>
+                </div>
+                <div>
+                  <span>Primary hook</span>
+                  <strong>Build what you control</strong>
+                </div>
+                <div>
+                  <span>Objection to clear</span>
+                  <strong>&ldquo;I already tried an AI tool&rdquo;</strong>
+                </div>
+                <div>
+                  <span>CTA destination</span>
+                  <strong>yourdomain.com/mission1000</strong>
+                </div>
+              </div>
+
+              <div className="brief-out">
+                <div>
+                  <b>03</b>
+                  <small>Videos</small>
+                </div>
+                <div>
+                  <b>05</b>
+                  <small>Posts</small>
+                </div>
+                <div>
+                  <b>02</b>
+                  <small>Emails</small>
+                </div>
+                <div>
+                  <b>02</b>
+                  <small>Graphics</small>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="premium-section marketing-container" id="difference">
-        <div className="section-intro centered-intro"><span className="section-kicker">THE DIFFERENCE</span><h2>Stop using AI like a slot machine.</h2><p>Random prompts produce random marketing. HubElites gives the work a system.</p></div>
-        <div className="comparison-wrap">
-          <div className="comparison-column comparison-old">
-            <div className="comparison-heading"><span>The usual AI workflow</span><b>Fragmented</b></div>
-            {oldWay.map(item => <div className="comparison-row" key={item}><span className="comparison-x">×</span>{item}</div>)}
+        {/* ---------------- Comparison ---------------- */}
+        <section className="container section-tight" id="difference">
+          <div className="section-head centered">
+            <span className="kicker">The difference</span>
+            <h2 className="h2">Stop using AI like a slot machine.</h2>
+            <p className="lead">Random prompts produce random marketing. HubElites gives the work a system.</p>
           </div>
-          <div className="comparison-column comparison-new">
-            <div className="comparison-glow" />
-            <div className="comparison-heading"><span>The HubElites workflow</span><b>Systematic</b></div>
-            {eliteWay.map(item => <div className="comparison-row" key={item}><span className="comparison-check"><Icon name="check" /></span>{item}</div>)}
+
+          <div className="versus">
+            <div className="versus-col">
+              <div className="versus-head">
+                <b>The usual AI workflow</b>
+                <span className="pill">Fragmented</span>
+              </div>
+              {oldWay.map((item) => (
+                <div className="versus-row" key={item}>
+                  <i className="no">
+                    <Icon name="x" />
+                  </i>
+                  {item}
+                </div>
+              ))}
+            </div>
+
+            <div className="versus-col win">
+              <div className="versus-head">
+                <b>The HubElites workflow</b>
+                <span className="pill pill-accent">Systematic</span>
+              </div>
+              {newWay.map((item) => (
+                <div className="versus-row" key={item}>
+                  <i className="yes">
+                    <Icon name="check" />
+                  </i>
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="premium-section architecture-section">
-        <div className="marketing-container architecture-card">
-          <div className="architecture-copy"><span className="section-kicker">BUILT AROUND THE FUNNEL YOU ALREADY HAVE</span><h2>HubElites doesn’t replace eStage. <span className="gradient-text">It feeds it.</span></h2><p>Your Ambassador domain and syndicated Mission 1000 experience remain the destination. HubElites owns the marketing layer in front: audience, strategy, media, distribution and optimization.</p></div>
-          <div className="architecture-flow">
-            <div><span>HubElites</span><b>Demand Engine</b><small>Audience · Content · Video · Traffic</small></div>
-            <span className="architecture-connector">→</span>
-            <div className="architecture-destination"><span>Your Ambassador Domain</span><b>Mission 1000 Funnel</b><small>Registration · Webinar · Checkout · Attribution</small></div>
+        {/* ---------------- Architecture ---------------- */}
+        <section className="container section-tight">
+          <div className="arch">
+            <div>
+              <span className="kicker">Built around the funnel you already have</span>
+              <h2 className="h2" style={{ marginTop: 18 }}>
+                HubElites doesn&apos;t replace eStage. <span className="grad-text">It feeds it.</span>
+              </h2>
+              <p className="lead" style={{ marginTop: 18 }}>
+                Your Ambassador domain and syndicated Mission 1000 experience stay the destination. HubElites owns the
+                marketing layer in front of it.
+              </p>
+            </div>
+
+            <div className="arch-flow">
+              <div className="arch-node">
+                <span>HubElites</span>
+                <b>Demand engine</b>
+                <small>Audience · Strategy · Media · Distribution · Learning</small>
+              </div>
+              <div className="arch-link" aria-hidden="true">
+                <Icon name="arrow" />
+              </div>
+              <div className="arch-node dest">
+                <span>Your Ambassador domain</span>
+                <b>Mission 1000 funnel</b>
+                <small>Registration · Webinar · Checkout · Attribution</small>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="marketing-container final-cta-section">
-        <div className="final-cta-glow" />
-        <span className="section-kicker">YOUR NEXT CAMPAIGN IS THE STARTING POINT</span>
-        <h2>Give HubElites an audience.<br /><span className="gradient-text">Get a marketing system back.</span></h2>
-        <p>Build the campaign, create the assets, and drive the traffic — without starting from a blank prompt every week.</p>
-        <div className="hero-actions final-actions"><a className="btn btn-primary btn-large" href="/onboarding">Start building <span className="btn-icon"><Icon name="arrow" /></span></a><a className="btn btn-glass btn-large" href="/login">Log in</a></div>
-      </section>
+        {/* ---------------- Stat band ---------------- */}
+        <section className="container section-tight">
+          <div className="statband">
+            <div>
+              <strong>1 decision</strong>
+              <span>Choose the audience — the system handles positioning, cadence and calls to action.</span>
+            </div>
+            <div>
+              <strong>12+ assets</strong>
+              <span>Video, social, email and graphics generated from a single campaign brief.</span>
+            </div>
+            <div>
+              <strong>5 engines</strong>
+              <span>Audience, campaign, media, distribution and learning working as one loop.</span>
+            </div>
+            <div>
+              <strong>0 blank pages</strong>
+              <span>You review and approve instead of starting from an empty prompt box.</span>
+            </div>
+          </div>
+        </section>
 
-      <footer className="marketing-footer">
-        <div className="marketing-container footer-inner"><a className="brand brand-premium" href="/"><span className="brand-symbol"><span>H</span></span><span>HubElites</span></a><p>Independent platform for eStage Ambassadors. Not affiliated with or endorsed by eStage.</p><span>© 2026 HubElites</span></div>
-      </footer>
-    </main>
+        {/* ---------------- FAQ ---------------- */}
+        <section className="container section-tight" id="faq">
+          <div className="section-head centered">
+            <span className="kicker">Questions</span>
+            <h2 className="h2">Straight answers.</h2>
+          </div>
+
+          <div className="faq">
+            {faqs.map((faq) => (
+              <details key={faq.q}>
+                <summary>
+                  {faq.q}
+                  <Icon name="chevron" />
+                </summary>
+                <p>{faq.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        {/* ---------------- Final CTA ---------------- */}
+        <section className="container section-tight">
+          <div className="cta">
+            <span className="kicker">Your next campaign is the starting point</span>
+            <h2 className="h2" style={{ marginTop: 20 }}>
+              Give HubElites an audience. <span className="grad-text">Get a marketing system back.</span>
+            </h2>
+            <p className="lead">
+              Build the campaign, create the assets and drive the traffic — without starting from a blank prompt every
+              week.
+            </p>
+            <div className="hero-cta">
+              <a className="btn btn-primary btn-lg" href="/onboarding">
+                Start building
+                <Icon name="arrow" />
+              </a>
+              <a className="btn btn-glass btn-lg" href="/login">
+                Log in
+              </a>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <SiteFooter />
+    </div>
   );
 }
