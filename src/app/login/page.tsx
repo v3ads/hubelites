@@ -1,4 +1,8 @@
+import { Icon } from '@/components/icon';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { requestLoginCode, verifyLoginCode } from './actions';
+
+export const metadata = { title: 'Log in' };
 
 type Props = {
   searchParams: Promise<{ sent?: string; email?: string; error?: string }>;
@@ -10,20 +14,65 @@ export default async function LoginPage({ searchParams }: Props) {
   const codeStep = params.sent === '1' && Boolean(email);
 
   return (
-    <main className="onboard-main">
-      <div className="form-card" style={{ maxWidth: 520 }}>
-        <a className="brand" href="/"><span className="mark">H</span>HubElites</a>
-        <div style={{ marginTop: 44 }}>
-          <span className="eyebrow">Passwordless access</span>
-          <h1 style={{ fontSize: 42, marginTop: 18 }}>{codeStep ? 'Check your email.' : 'Welcome back.'}</h1>
-          <p className="sub" style={{ fontSize: 15, lineHeight: 1.6 }}>
+    <div className="auth">
+      <aside className="auth-side">
+        <a className="logo" href="/">
+          <span className="logo-mark">
+            <span>H</span>
+          </span>
+          HubElites
+        </a>
+
+        <div className="auth-quote">
+          <span className="kicker">Campaign autopilot</span>
+          <h2 style={{ marginTop: 18 }}>
+            One audience decision. <span className="grad-text">A full week of marketing.</span>
+          </h2>
+          <p>
+            Sign in to approve this week&apos;s campaign, publish your assets and watch the traffic land on your own
+            Mission 1000 funnel.
+          </p>
+
+          <div className="auth-points">
+            <div>
+              <Icon name="check" />
+              No passwords — a one-time code, every time
+            </div>
+            <div>
+              <Icon name="check" />
+              Your funnel keeps the conversion and attribution
+            </div>
+            <div>
+              <Icon name="check" />
+              Credits are reserved before anything expensive runs
+            </div>
+          </div>
+        </div>
+
+        <p style={{ fontSize: 11, color: 'var(--text-4)', maxWidth: '38ch' }}>
+          Independent platform for eStage Ambassadors. Not affiliated with or endorsed by eStage.
+        </p>
+      </aside>
+
+      <main className="auth-main" id="main">
+        <div className="auth-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <span className="pill pill-accent">
+              <Icon name="lock" />
+              Passwordless access
+            </span>
+            <ThemeToggle />
+          </div>
+
+          <h1>{codeStep ? 'Check your email.' : 'Welcome back.'}</h1>
+          <p>
             {codeStep
               ? `We sent a one-time sign-in code to ${email}. Enter it below to continue.`
-              : 'Enter your email and we’ll send you a one-time sign-in code. No password and no magic-link headaches.'}
+              : 'Enter your email and we’ll send a one-time sign-in code. No password, no magic-link headaches.'}
           </p>
 
           {params.error && (
-            <div className="flow-card" style={{ marginTop: 18, borderColor: 'rgba(244,189,80,.35)' }}>
+            <div className="auth-alert" style={{ marginTop: 20 }}>
               {params.error === 'invalid_code'
                 ? 'Enter the numeric code from your email.'
                 : 'That code was not accepted. Request a fresh code and try again.'}
@@ -32,41 +81,49 @@ export default async function LoginPage({ searchParams }: Props) {
 
           {codeStep ? (
             <>
-              <form action={verifyLoginCode}>
+              <form className="auth-form" action={verifyLoginCode}>
                 <input type="hidden" name="email" value={email} />
                 <div className="field">
-                  <label>One-time code</label>
+                  <label htmlFor="token">One-time code</label>
                   <input
+                    id="token"
+                    className="input-lg input-code"
                     name="token"
                     type="text"
                     inputMode="numeric"
                     autoComplete="one-time-code"
-                    placeholder="Enter code"
+                    placeholder="······"
                     minLength={6}
                     maxLength={8}
                     required
                     autoFocus
                   />
+                  <span className="field-hint">The code expires shortly after it is sent.</span>
                 </div>
-                <button className="btn btn-primary" style={{ width: '100%', marginTop: 18 }}>
-                  Verify & continue
+                <button className="btn btn-primary btn-lg btn-block" type="submit">
+                  Verify &amp; continue
+                  <Icon name="arrow" />
                 </button>
               </form>
 
               <form action={requestLoginCode} style={{ marginTop: 12 }}>
                 <input type="hidden" name="email" value={email} />
-                <button className="btn" style={{ width: '100%' }}>Send a fresh code</button>
+                <button className="btn btn-block" type="submit">
+                  Send a fresh code
+                </button>
               </form>
 
-              <p className="sub" style={{ textAlign: 'center', marginTop: 15 }}>
+              <p className="auth-foot">
                 <a href="/login">Use a different email</a>
               </p>
             </>
           ) : (
-            <form action={requestLoginCode}>
+            <form className="auth-form" action={requestLoginCode}>
               <div className="field">
-                <label>Email address</label>
+                <label htmlFor="email">Email address</label>
                 <input
+                  id="email"
+                  className="input-lg"
                   name="email"
                   type="email"
                   autoComplete="email"
@@ -75,17 +132,18 @@ export default async function LoginPage({ searchParams }: Props) {
                   required
                 />
               </div>
-              <button className="btn btn-primary" style={{ width: '100%', marginTop: 18 }}>
+              <button className="btn btn-primary btn-lg btn-block" type="submit">
                 Send sign-in code
+                <Icon name="mail" />
               </button>
             </form>
           )}
 
-          <p className="sub" style={{ textAlign: 'center', marginTop: 15 }}>
-            Login codes are delivered securely through Brevo.
+          <p className="auth-foot">
+            New here? <a href="/onboarding">Start building your first campaign</a>
           </p>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
