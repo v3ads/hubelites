@@ -1,0 +1,144 @@
+/* ============================================================
+   HubElites — Design tokens
+   Electric spectrum: near-black base, high-chroma accents.
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* --- Base surfaces (dark) --- */
+  --void: #04050b;
+  --bg: #06070e;
+  --bg-2: #080a14;
+  --surface-1: rgba(255, 255, 255, 0.024);
+  --surface-2: rgba(255, 255, 255, 0.042);
+  --surface-3: rgba(255, 255, 255, 0.065);
+  --solid-1: #0a0d18;
+  --solid-2: #0e1220;
+  --solid-3: #131829;
+
+  /* --- Hairlines --- */
+  --line: rgba(148, 163, 208, 0.14);
+  --line-2: rgba(148, 163, 208, 0.24);
+  --line-3: rgba(148, 163, 208, 0.36);
+
+  /* --- Text --- */
+  --text: #f5f7ff;
+  --text-2: #c3cade;
+  --text-3: #8d96b2;
+  --text-4: #626c88;
+
+  /* --- Accents (electric spectrum) --- */
+  --blue: #3b82f6;
+  --blue-bright: #60a5fa;
+  --cyan: #22d3ee;
+  --violet: #8b5cf6;
+  --violet-bright: #a78bfa;
+  --magenta: #f43f5e;
+  --pink: #ec4899;
+  --lime: #a3e635;
+  --emerald: #2dd4a0;
+  --amber: #fbbf24;
+
+  /* --- Accent tints (surfaces / rings) --- */
+  --blue-soft: rgba(59, 130, 246, 0.12);
+  --cyan-soft: rgba(34, 211, 238, 0.12);
+  --violet-soft: rgba(139, 92, 246, 0.13);
+  --magenta-soft: rgba(244, 63, 94, 0.12);
+  --lime-soft: rgba(163, 230, 53, 0.12);
+  --emerald-soft: rgba(45, 212, 160, 0.12);
+  --amber-soft: rgba(251, 191, 36, 0.12);
+
+  /* --- Signature gradients --- */
+  --grad-spectrum: linear-gradient(115deg, #3b82f6 0%, #22d3ee 34%, #8b5cf6 68%, #ec4899 100%);
+  --grad-primary: linear-gradient(135deg, #3f7dfb 0%, #5b6ef8 46%, #8b5cf6 100%);
+  --grad-text: linear-gradient(104deg, #8fbaff 0%, #5eead4 32%, #a78bfa 62%, #f9a8d4 100%);
+  --grad-line: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.7), rgba(34, 211, 238, 0.6), rgba(139, 92, 246, 0.65), transparent);
+  --grad-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
+
+  /* --- Glows / shadows --- */
+  --glow-blue: 0 0 0 1px rgba(59, 130, 246, 0.16), 0 18px 60px -18px rgba(59, 130, 246, 0.55);
+  --glow-violet: 0 24px 70px -22px rgba(139, 92, 246, 0.6);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 18px 40px -18px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 40px 90px -30px rgba(0, 0, 0, 0.85);
+  --shadow-xl: 0 60px 140px -40px rgba(0, 0, 0, 0.9);
+  --inner-hi: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  /* --- Radii --- */
+  --r-xs: 8px;
+  --r-sm: 11px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-2xl: 36px;
+  --r-full: 999px;
+
+  /* --- Spacing rhythm --- */
+  --gutter: 24px;
+  --max-w: 1200px;
+  --section-y: 108px;
+
+  /* --- Type --- */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  /* --- Motion --- */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur: 0.24s;
+}
+
+/* ============================================================
+   Light theme — a designed counterpart, not an inversion.
+   ============================================================ */
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --void: #eef1f8;
+  --bg: #f6f8fc;
+  --bg-2: #eff3fa;
+  --surface-1: rgba(15, 23, 42, 0.026);
+  --surface-2: rgba(15, 23, 42, 0.045);
+  --surface-3: rgba(15, 23, 42, 0.07);
+  --solid-1: #ffffff;
+  --solid-2: #fbfcfe;
+  --solid-3: #f2f5fa;
+
+  --line: rgba(30, 45, 80, 0.12);
+  --line-2: rgba(30, 45, 80, 0.2);
+  --line-3: rgba(30, 45, 80, 0.32);
+
+  --text: #0b1020;
+  --text-2: #33405c;
+  --text-3: #5d6a86;
+  --text-4: #808da8;
+
+  --blue: #2563eb;
+  --blue-bright: #3b82f6;
+  --cyan: #0891b2;
+  --violet: #7c3aed;
+  --violet-bright: #8b5cf6;
+  --magenta: #e11d48;
+  --pink: #db2777;
+  --lime: #65a30d;
+  --emerald: #059669;
+  --amber: #d97706;
+
+  --blue-soft: rgba(37, 99, 235, 0.09);
+  --cyan-soft: rgba(8, 145, 178, 0.09);
+  --violet-soft: rgba(124, 58, 237, 0.09);
+  --magenta-soft: rgba(225, 29, 72, 0.08);
+  --lime-soft: rgba(101, 163, 13, 0.1);
+  --emerald-soft: rgba(5, 150, 105, 0.09);
+  --amber-soft: rgba(217, 119, 6, 0.1);
+
+  --grad-text: linear-gradient(104deg, #1d4ed8 0%, #0891b2 34%, #7c3aed 66%, #db2777 100%);
+  --grad-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.6));
+
+  --shadow-sm: 0 2px 6px rgba(23, 37, 66, 0.06);
+  --shadow-md: 0 14px 34px -14px rgba(23, 37, 66, 0.22);
+  --shadow-lg: 0 30px 70px -28px rgba(23, 37, 66, 0.28);
+  --shadow-xl: 0 50px 110px -40px rgba(23, 37, 66, 0.3);
+  --inner-hi: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
