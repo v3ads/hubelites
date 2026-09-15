@@ -15,7 +15,7 @@ export async function requestLoginCode(formData: FormData) {
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: true },
+    options: { shouldCreateUser: false },
   });
 
   if (error) redirect(loginUrl({ error: error.message, email }));
