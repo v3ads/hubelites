@@ -45,3 +45,11 @@ npm run dev
 ## Security
 
 Never commit production keys. Provider API keys and the Super Admin bootstrap identity are environment configuration only.
+
+## Temporary public access closure
+
+`src/lib/public-access.ts` controls public login and onboarding access. It is currently
+`false`: marketing login/onboarding links are hidden, the entry pages redirect to `/`,
+and login actions and email-confirmation links cannot start a new session.
+Existing sessions, token refresh, `/dashboard`, and super-admin checks are unchanged.
+Set `PUBLIC_ACCESS_ENABLED` to `true` and redeploy to restore all entry points.

@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
+import { PUBLIC_ACCESS_ENABLED } from '@/lib/public-access';
 
 function loginUrl(params: Record<string, string>) {
   const search = new URLSearchParams(params);
@@ -9,6 +10,7 @@ function loginUrl(params: Record<string, string>) {
 }
 
 export async function requestLoginCode(formData: FormData) {
+  if (!PUBLIC_ACCESS_ENABLED) redirect('/');
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
   if (!email) redirect(loginUrl({ error: 'email_required' }));
 
@@ -23,6 +25,7 @@ export async function requestLoginCode(formData: FormData) {
 }
 
 export async function verifyLoginCode(formData: FormData) {
+  if (!PUBLIC_ACCESS_ENABLED) redirect('/');
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
   const token = String(formData.get('token') ?? '').replace(/\s+/g, '');
 

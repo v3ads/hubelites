@@ -1,6 +1,8 @@
 import { Icon } from '@/components/icon';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { requestLoginCode, verifyLoginCode } from './actions';
+import { redirect } from 'next/navigation';
+import { PUBLIC_ACCESS_ENABLED } from '@/lib/public-access';
 
 export const metadata = { title: 'Log in' };
 
@@ -9,6 +11,7 @@ type Props = {
 };
 
 export default async function LoginPage({ searchParams }: Props) {
+  if (!PUBLIC_ACCESS_ENABLED) redirect('/');
   const params = await searchParams;
   const email = params.email ?? '';
   const codeStep = params.sent === '1' && Boolean(email);

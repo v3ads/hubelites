@@ -1,3 +1,5 @@
+import { PUBLIC_ACCESS_ENABLED } from '@/lib/public-access';
+
 const columns = [
   {
     title: 'Platform',
@@ -49,7 +51,7 @@ export function SiteFooter() {
           {columns.map((column) => (
             <div className="footer-col" key={column.title}>
               <h4>{column.title}</h4>
-              {column.links.map((link) => (
+              {column.links.filter((link) => PUBLIC_ACCESS_ENABLED || !['/login', '/onboarding'].includes(link.href)).map((link) => (
                 <a key={link.label} href={link.href}>
                   {link.label}
                 </a>

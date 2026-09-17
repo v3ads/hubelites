@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS_ENABLED } from '@/lib/public-access';
 import { Icon, type IconName } from '@/components/icon';
 import { SiteHeader } from '@/components/marketing/site-header';
 import { SiteFooter } from '@/components/marketing/site-footer';
@@ -119,10 +120,12 @@ export default function HomePage() {
             </p>
 
             <div className="hero-cta">
-              <a className="btn btn-primary btn-lg" href="/onboarding">
-                Build my first campaign
-                <Icon name="arrow" />
-              </a>
+              {PUBLIC_ACCESS_ENABLED && (
+                <a className="btn btn-primary btn-lg" href="/onboarding">
+                  Build my first campaign
+                  <Icon name="arrow" />
+                </a>
+              )}
               <a className="btn btn-glass btn-lg" href="#system">
                 See how it works
               </a>
@@ -360,10 +363,12 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <a className="btn btn-outline-grad btn-lg" href="/onboarding" style={{ marginTop: 30 }}>
-                Create this week&apos;s campaign
-                <Icon name="arrow-up-right" />
-              </a>
+              {PUBLIC_ACCESS_ENABLED && (
+                <a className="btn btn-outline-grad btn-lg" href="/onboarding" style={{ marginTop: 30 }}>
+                  Create this week&apos;s campaign
+                  <Icon name="arrow-up-right" />
+                </a>
+              )}
             </div>
 
             <div className="brief">
@@ -552,13 +557,17 @@ export default function HomePage() {
               week.
             </p>
             <div className="hero-cta">
-              <a className="btn btn-primary btn-lg" href="/onboarding">
-                Start building
-                <Icon name="arrow" />
-              </a>
-              <a className="btn btn-glass btn-lg" href="/login">
-                Log in
-              </a>
+              {PUBLIC_ACCESS_ENABLED && (
+                <a className="btn btn-primary btn-lg" href="/onboarding">
+                  Start building
+                  <Icon name="arrow" />
+                </a>
+              )}
+              {PUBLIC_ACCESS_ENABLED && (
+                <a className="btn btn-glass btn-lg" href="/login">
+                  Log in
+                </a>
+              )}
             </div>
           </div>
         </section>

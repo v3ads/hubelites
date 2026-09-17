@@ -1,5 +1,7 @@
 'use client';
 
+import { PUBLIC_ACCESS_ENABLED } from '@/lib/public-access';
+
 import { useEffect, useState } from 'react';
 import { Icon } from '../icon';
 import { ThemeToggle } from '../theme-toggle';
@@ -44,13 +46,17 @@ export function SiteHeader() {
 
           <div className="nav-actions">
             <ThemeToggle />
-            <a className="btn btn-ghost nav-desktop-only" href="/login">
-              Log in
-            </a>
-            <a className="btn btn-primary nav-desktop-only" href="/onboarding">
-              Start building
-              <Icon name="arrow" />
-            </a>
+            {PUBLIC_ACCESS_ENABLED && (
+              <a className="btn btn-ghost nav-desktop-only" href="/login">
+                Log in
+              </a>
+            )}
+            {PUBLIC_ACCESS_ENABLED && (
+              <a className="btn btn-primary nav-desktop-only" href="/onboarding">
+                Start building
+                <Icon name="arrow" />
+              </a>
+            )}
             <button
               type="button"
               className="btn btn-icon nav-burger"
@@ -71,13 +77,17 @@ export function SiteHeader() {
               {link.label}
             </a>
           ))}
-          <a className="btn btn-glass" href="/login" onClick={() => setOpen(false)}>
-            Log in
-          </a>
-          <a className="btn btn-primary" href="/onboarding" onClick={() => setOpen(false)}>
-            Start building
-            <Icon name="arrow" />
-          </a>
+          {PUBLIC_ACCESS_ENABLED && (
+            <a className="btn btn-glass" href="/login" onClick={() => setOpen(false)}>
+              Log in
+            </a>
+          )}
+          {PUBLIC_ACCESS_ENABLED && (
+            <a className="btn btn-primary" href="/onboarding" onClick={() => setOpen(false)}>
+              Start building
+              <Icon name="arrow" />
+            </a>
+          )}
         </div>
       )}
     </>
