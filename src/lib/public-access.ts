@@ -1,3 +1,4 @@
-// Temporary public entry-point closure. Set to true and redeploy to reopen.
-// Existing sessions, session refresh, dashboard and admin authorization stay active.
-export const PUBLIC_ACCESS_ENABLED = false;
+// Public entry points are OPEN (Phase 0+1 launch, 2026-10-20): passwordless
+// sign-in/sign-up, onboarding, dashboard. Set to false and redeploy to close
+// public entry points again; existing sessions and session refresh stay active.
+export const PUBLIC_ACCESS_ENABLED = true;

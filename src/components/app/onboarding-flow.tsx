@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Icon, type IconName } from '../icon';
 import { ThemeToggle } from '../theme-toggle';
+import { completeOnboarding } from '@/app/onboarding/actions';
 
 type StepKey = 'identity' | 'destination' | 'audience' | 'channels' | 'style' | 'launch';
 
@@ -37,10 +39,13 @@ const channelOptions: { label: string; icon: IconName }[] = [
 
 const toneOptions = ['Direct and practical', 'Warm and encouraging', 'Bold and contrarian', 'Analytical and calm'];
 
-export function OnboardingFlow() {
+export function OnboardingFlow({ initialName = '', email = '' }: { initialName?: string; email?: string }) {
+  const router = useRouter();
   const [index, setIndex] = useState(0);
   const [brand, setBrand] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [fullName, setFullName] = useState(initialName);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [website, setWebsite] = useState('');
   const [mission, setMission] = useState('');
   const [audiences, setAudiences] = useState<string[]>(['Coaches']);
@@ -83,6 +88,12 @@ export function OnboardingFlow() {
             </button>
           ))}
         </div>
+
+        {email && (
+          <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '18px 0 0' }}>
+            Signed in as {email}
+          </p>
+        )}
 
         <div className="onb-progress">
           <div className="meter meter-spectrum">
@@ -233,7 +244,15 @@ export function OnboardingFlow() {
           {step.key === 'launch' && (
             <>
               <h1>Ready to build your first campaign.</h1>
-              <p>HubElites will turn this into a full week of coordinated assets pointing at your funnel.</p>
+              <p>
+                We&apos;ll save this as your workspace, set your destination, and create your first campaign draft —
+                the starting point your weekly campaigns are generated from.
+              </p>
+              {saveError && (
+                <div className="auth-alert" style={{ marginBottom: 14 }}>
+                  {saveError}
+                </div>
+              )}
               <div className="onb-review">
                 <div>
                   <span>Brand</span>
@@ -279,10 +298,34 @@ export function OnboardingFlow() {
                 <Icon name="arrow" />
               </button>
             ) : (
-              <a className="btn btn-primary btn-lg" href="/dashboard">
+              <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                disabled={saving}
+                onClick={async () => {
+                  setSaveError('');
+                  setSaving(true);
+                  const result = await completeOnboarding({
+                    brand,
+                    fullName,
+                    website,
+                    missionUrl: mission,
+                    audiences,
+                    channels,
+                    tone,
+                  });
+                  if (result.ok) {
+                    router.push('/dashboard');
+                    router.refresh();
+                  } else {
+                    setSaveError(result.error);
+                    setSaving(false);
+                  }
+                }}
+              >
                 <Icon name="sparkles" />
-                Generate my first campaign
-              </a>
+                {saving ? 'Saving your workspace…' : 'Create my workspace'}
+              </button>
             )}
           </div>
         </div>

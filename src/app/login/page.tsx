@@ -143,7 +143,7 @@ export default async function LoginPage({ searchParams }: Props) {
           )}
 
           <p className="auth-foot">
-            New here? <a href="/onboarding">Start building your first campaign</a>
+            New here? Enter your email above — we&apos;ll create your account and walk you through setup.
           </p>
         </div>
       </main>

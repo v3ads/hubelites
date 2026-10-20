@@ -6,8 +6,9 @@ AI-powered marketing engine for eStage Ambassadors.
 
 - Dark-first marketing site (hero product mockup, bento system, engine loop, campaign brief, comparison, FAQ)
 - Split-screen passwordless login
-- Interactive six-step onboarding flow
-- Ambassador dashboard (KPIs, next best action, campaign pipeline, weekly calendar)
+- Interactive six-step onboarding flow, persisted to Supabase (workspace, brand, destination, audiences, first campaign draft)
+- Ambassador dashboard reading real tenant data (KPIs, next best action, setup checklist, destination editor, campaign pipeline, weekly calendar)
+- Real Terms of Service and Privacy Policy pages linked in the footer
 - Super Admin command center (platform KPIs, tenants, system health, media economics)
 - Initial multi-tenant Supabase schema + RLS
 - Master product/technical blueprint
@@ -46,10 +47,11 @@ npm run dev
 
 Never commit production keys. Provider API keys and the Super Admin bootstrap identity are environment configuration only.
 
-## Temporary public access closure
+## Public access
 
 `src/lib/public-access.ts` controls public login and onboarding access. It is currently
-`false`: marketing login/onboarding links are hidden, the entry pages redirect to `/`,
-and login actions and email-confirmation links cannot start a new session.
-Existing sessions, token refresh, `/dashboard`, and super-admin checks are unchanged.
-Set `PUBLIC_ACCESS_ENABLED` to `true` and redeploy to restore all entry points.
+`true` (reopened 2026-10-20 with the Phase 0+1 launch): passwordless sign-in/sign-up,
+the six-step onboarding (which persists the workspace, brand, destination, audiences and
+a first campaign draft to Supabase), and a dashboard that reads real tenant data.
+Set `PUBLIC_ACCESS_ENABLED` to `false` and redeploy to close public entry points again;
+existing sessions, token refresh, `/dashboard`, and super-admin checks stay active.

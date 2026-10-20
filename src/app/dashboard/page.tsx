@@ -1,97 +1,52 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
 import { AppShell, type NavGroup } from '@/components/app/app-shell';
+import { DestinationForm } from '@/components/app/destination-form';
 import { Icon } from '@/components/icon';
 
 export const metadata = { title: 'Dashboard' };
 
-const nav: NavGroup[] = [
-  {
-    items: [
-      { label: 'Home', icon: 'grid', href: '/dashboard', active: true },
-      { label: 'Campaigns', icon: 'layers', href: '#' },
-      { label: 'Create', icon: 'sparkles', href: '#', tag: 'AI' },
-      { label: 'Content', icon: 'image', href: '#' },
-      { label: 'Calendar', icon: 'calendar', href: '#' },
-      { label: 'Prospects', icon: 'users', href: '#' },
-      { label: 'Analytics', icon: 'chart', href: '#' },
-    ],
-  },
-  {
-    title: 'Workspace',
-    items: [
-      { label: 'Brand', icon: 'wand', href: '#' },
-      { label: 'Connections', icon: 'plug', href: '#' },
-      { label: 'Credits', icon: 'credit', href: '#' },
-      { label: 'Settings', icon: 'settings', href: '#' },
-    ],
-  },
-];
+type AssetRow = {
+  id: string;
+  title: string | null;
+  type: string;
+  channel: string | null;
+  status: string;
+  scheduled_for: string | null;
+  created_at: string;
+};
 
-const kpis = [
-  { label: 'Content ready', value: '11', delta: '+4 this week', tone: '', bars: [30, 44, 38, 56, 50, 72, 84] },
-  { label: 'Scheduled', value: '7', delta: '+2 vs last week', tone: 'violet', bars: [22, 30, 42, 38, 54, 60, 66] },
-  { label: 'Published', value: '4', delta: 'On track', tone: 'cyan', bars: [18, 26, 24, 40, 44, 52, 58] },
-  { label: 'Funnel visits', value: '83', delta: '+23%', tone: 'lime', bars: [26, 34, 30, 48, 56, 68, 88] },
-];
+const typeLabels: Record<string, string> = {
+  social_post: 'Social post',
+  email: 'Email',
+  image: 'Graphic',
+  video: 'Video',
+  carousel: 'Carousel',
+  script: 'Script',
+  landing_copy: 'Landing copy',
+};
 
-const board = [
-  {
-    title: 'Drafting',
-    count: 2,
-    cards: [
-      { title: 'Coach objection short #3', meta: 'Video · 00:31' },
-      { title: 'Creator email — nurture', meta: 'Email · 320 words' },
-    ],
-  },
-  {
-    title: 'Needs approval',
-    count: 3,
-    cards: [
-      { title: 'Wednesday short — coaches', meta: 'Video · 00:34' },
-      { title: 'LinkedIn carousel', meta: 'Graphic · 6 slides' },
-      { title: 'Mission invite email', meta: 'Email · 210 words' },
-    ],
-  },
-  {
-    title: 'Scheduled',
-    count: 4,
-    cards: [
-      { title: 'Ownership hook short', meta: 'Tue 9:00am' },
-      { title: 'Case-angle post', meta: 'Thu 12:30pm' },
-    ],
-  },
-  {
-    title: 'Published',
-    count: 4,
-    cards: [
-      { title: '“Rented audience” short', meta: '412 views · 38 clicks' },
-      { title: 'Founder story post', meta: '203 views · 11 clicks' },
-    ],
-  },
-];
+const typeTones: Record<string, string> = {
+  social_post: 'violet',
+  email: 'cyan',
+  image: 'lime',
+  video: 'blue',
+  carousel: 'lime',
+  script: 'blue',
+  landing_copy: 'violet',
+};
 
-const week: { day: string; chips: { label: string; tone: string }[] }[] = [
-  { day: 'Mon', chips: [{ label: 'Short 01', tone: 'blue' }] },
-  {
-    day: 'Tue',
-    chips: [
-      { label: 'Post', tone: 'violet' },
-      { label: 'Email', tone: 'cyan' },
-    ],
-  },
-  { day: 'Wed', chips: [{ label: 'Short 02', tone: 'blue' }] },
-  { day: 'Thu', chips: [{ label: 'Carousel', tone: 'lime' }] },
-  {
-    day: 'Fri',
-    chips: [
-      { label: 'Short 03', tone: 'blue' },
-      { label: 'Post', tone: 'violet' },
-    ],
-  },
-  { day: 'Sat', chips: [] },
-  { day: 'Sun', chips: [{ label: 'Recap email', tone: 'cyan' }] },
-];
+function dailyBars(rows: { created_at: string }[]) {
+  const days: number[] = Array.from({ length: 7 }, () => 0);
+  const now = new Date();
+  for (const row of rows) {
+    const created = new Date(row.created_at);
+    const diff = Math.floor((now.getTime() - created.getTime()) / 86_400_000);
+    if (diff >= 0 && diff < 7) days[6 - diff] += 1;
+  }
+  const max = Math.max(...days, 1);
+  return days.map((count) => Math.max(12, Math.round((count / max) * 100)));
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -100,15 +55,221 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('display_name,is_super_admin,onboarding_completed_at')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const { data: membership } = await supabase
+    .from('organization_members')
+    .select('organization_id,role,organizations(name,slug)')
+    .eq('user_id', user.id)
+    .limit(1)
+    .maybeSingle();
+
+  // Signed in but no workspace yet — onboarding creates it.
+  if (!membership) redirect('/onboarding');
+
+  const orgId = membership.organization_id as string;
+  const org = (membership as unknown as { organizations: { name: string; slug: string } | null }).organizations;
+
+  const [brandResult, destinationResult, audiencesResult, campaignsResult, assetsResult, walletResult, visitsResult, prospectsResult] =
+    await Promise.all([
+      supabase.from('brand_profiles').select('*').eq('organization_id', orgId).maybeSingle(),
+      supabase
+        .from('ambassador_destinations')
+        .select('*')
+        .eq('organization_id', orgId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase.from('audiences').select('id,name').eq('organization_id', orgId).order('created_at', { ascending: true }),
+      supabase
+        .from('campaigns')
+        .select('id,title,status,brief,audience_id,created_at')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(10),
+      supabase
+        .from('campaign_assets')
+        .select('id,title,type,channel,status,scheduled_for,created_at')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(500),
+      supabase.from('credit_wallets').select('*').eq('organization_id', orgId).maybeSingle(),
+      supabase
+        .from('analytics_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', orgId)
+        .in('event_name', ['funnel_visit', 'click', 'asset_click']),
+      supabase.from('prospects').select('id', { count: 'exact', head: true }).eq('organization_id', orgId),
+    ]);
+
+  const brand = brandResult.data;
+  const destination = destinationResult.data;
+  const audiences = audiencesResult.data ?? [];
+  const campaigns = campaignsResult.data ?? [];
+  const assets = (assetsResult.data ?? []) as AssetRow[];
+  const wallet = walletResult.data;
+  const funnelVisits = visitsResult.count ?? 0;
+  const prospectsCount = prospectsResult.count ?? 0;
+
   const email = user.email ?? 'ambassador@hubelites.com';
-  const name = ((user.user_metadata?.full_name as string | undefined) ?? email.split('@')[0]) || 'Ambassador';
+  const name =
+    (profile?.display_name as string | undefined) ??
+    ((user.user_metadata?.full_name as string | undefined) ?? email.split('@')[0]) ??
+    'Ambassador';
+  const isSuperAdmin = Boolean(profile?.is_super_admin);
+
+  const byStatus = (status: string) => assets.filter((asset) => asset.status === status);
+  const readyAssets = assets.filter((asset) => ['ready', 'approved'].includes(asset.status));
+  const scheduledAssets = byStatus('scheduled');
+  const publishedAssets = byStatus('published');
+  const draftAssets = byStatus('draft');
+  const draftCampaign = campaigns.find((campaign) => campaign.status === 'draft') ?? campaigns[0];
+  const creditBalance = (wallet?.balance as number | undefined) ?? 0;
+  const creditUsed = (wallet?.lifetime_used as number | undefined) ?? 0;
+  const creditTotal = creditBalance + creditUsed;
+
+  const destinationHost = destination?.destination_url
+    ? String(destination.destination_url).replace(/^https?:\/\//, '').replace(/\/$/, '')
+    : null;
+
+  const audienceNameById = new Map(audiences.map((audience) => [audience.id as string, audience.name as string]));
+  const draftBrief = (draftCampaign?.brief ?? {}) as {
+    audiences?: string[];
+    channels?: string[];
+    tone?: string;
+    note?: string;
+  };
+
+  const kpis = [
+    {
+      label: 'Campaigns',
+      value: String(campaigns.length),
+      delta: campaigns.length ? `${campaigns.filter((c) => c.status === 'draft').length} in draft` : 'None yet',
+      tone: '',
+      bars: dailyBars(campaigns),
+    },
+    {
+      label: 'Assets ready',
+      value: String(readyAssets.length),
+      delta: assets.length ? `${assets.length} assets total` : 'Nothing generated yet',
+      tone: 'violet',
+      bars: dailyBars(assets),
+    },
+    {
+      label: 'Scheduled',
+      value: String(scheduledAssets.length),
+      delta: scheduledAssets.length ? 'In this week’s plan' : 'Nothing scheduled',
+      tone: 'cyan',
+      bars: dailyBars(scheduledAssets as unknown as { created_at: string }[]),
+    },
+    {
+      label: 'Funnel visits',
+      value: String(funnelVisits),
+      delta: destinationHost ? `Tracked to ${destinationHost}` : 'Set a destination to track',
+      tone: 'lime',
+      bars: Array.from({ length: 7 }, () => Math.min(100, 12 + funnelVisits)),
+    },
+  ];
+
+  const boardColumns = [
+    { title: 'Drafting', rows: draftAssets, empty: 'Draft assets appear here as campaigns are generated.' },
+    { title: 'Needs approval', rows: readyAssets, empty: 'Assets waiting on your approval land here.' },
+    { title: 'Scheduled', rows: scheduledAssets, empty: 'Approved assets get scheduled here.' },
+    { title: 'Published', rows: publishedAssets, empty: 'Published assets and their results show here.' },
+  ];
+
+  // Current week (Mon–Sun) from scheduled assets.
+  const today = new Date();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+  const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + index);
+    const chips = scheduledAssets
+      .filter((asset) => asset.scheduled_for && new Date(asset.scheduled_for).toDateString() === date.toDateString())
+      .map((asset) => ({ label: typeLabels[asset.type] ?? asset.type, tone: typeTones[asset.type] ?? 'blue' }));
+    return { day, chips };
+  });
+
+  const checklist = [
+    {
+      done: true,
+      title: 'Workspace created',
+      detail: org?.name ? `${org.name} is live and this dashboard reads its real data.` : 'Your workspace is live.',
+    },
+    {
+      done: Boolean(destination),
+      title: 'Mission 1000 destination',
+      detail: destination
+        ? `Every CTA points to ${destinationHost}.`
+        : 'Not set yet — add it in the destination panel below and every CTA will point home.',
+    },
+    {
+      done: audiences.length > 0,
+      title: 'Audiences defined',
+      detail: audiences.length
+        ? audiences.map((a) => a.name).join(', ')
+        : 'No audiences yet. Campaigns start from an audience decision.',
+    },
+    {
+      done: campaigns.length > 0,
+      title: 'First campaign draft',
+      detail: campaigns.length
+        ? `“${draftCampaign?.title}” is saved as a draft, ready for the Campaign Brain.`
+        : 'Your first campaign draft is created during setup.',
+    },
+    {
+      done: false,
+      title: 'Channels connected',
+      detail: 'Social connections and publishing arrive with the Distribution phase. Assets stay export-ready until then.',
+    },
+    {
+      done: creditBalance > 0,
+      title: 'Media credits',
+      detail:
+        creditBalance > 0
+          ? `${creditBalance} credits available for generation.`
+          : 'Balance is 0. Credit packs arrive with the billing phase; nothing can charge you before then.',
+    },
+  ];
+  const checklistDone = checklist.filter((item) => item.done).length;
+
+  const nav: NavGroup[] = [
+    {
+      items: [
+        { label: 'Home', icon: 'grid', href: '/dashboard', active: true },
+        { label: 'Campaigns', icon: 'layers', href: '#' },
+        { label: 'Create', icon: 'sparkles', href: '#', tag: 'AI' },
+        { label: 'Content', icon: 'image', href: '#' },
+        { label: 'Calendar', icon: 'calendar', href: '#' },
+        { label: 'Prospects', icon: 'users', href: '#' },
+        { label: 'Analytics', icon: 'chart', href: '#' },
+      ],
+    },
+    {
+      title: 'Workspace',
+      items: [
+        { label: 'Brand', icon: 'wand', href: '#' },
+        { label: 'Connections', icon: 'plug', href: '#' },
+        { label: 'Credits', icon: 'credit', href: '#' },
+        { label: 'Settings', icon: 'settings', href: '#' },
+        ...(isSuperAdmin ? [{ label: 'Admin', icon: 'shield' as const, href: '/admin' }] : []),
+      ],
+    },
+  ];
 
   return (
     <AppShell
       groups={nav}
       crumbs={['Workspace', 'Home']}
-      user={{ name, email, role: 'Ambassador' }}
-      credits={{ used: 36, total: 120 }}
+      user={{ name, email, role: isSuperAdmin ? 'Super Admin' : 'Ambassador' }}
+      credits={creditTotal > 0 ? { used: creditUsed, total: creditTotal } : undefined}
       action={
         <a className="btn btn-primary" href="#">
           <Icon name="sparkles" />
@@ -119,13 +280,22 @@ export default async function DashboardPage() {
       <div className="page-head">
         <div>
           <h1>Good to see you, {name.split(/[ .]/)[0]}.</h1>
-          <p>Your Mission 1000 campaign has 5 assets waiting for approval this week.</p>
+          <p>
+            {campaigns.length
+              ? `You have ${campaigns.length} campaign${campaigns.length === 1 ? '' : 's'}, ${assets.length} assets and ${funnelVisits} tracked funnel visits in ${org?.name ?? 'your workspace'}.`
+              : 'Your workspace is set up. Everything below is your real data — as campaigns are generated, this fills in.'}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <span className="pill pill-live">
-            <span className="dot" /> Campaign brain active
-          </span>
-          <span className="pill">Week 34</span>
+          {destinationHost ? (
+            <span className="pill pill-live">
+              <span className="dot" /> CTA → {destinationHost}
+            </span>
+          ) : (
+            <span className="pill">No destination set</span>
+          )}
+          <span className="pill">{creditBalance} credits</span>
+          {prospectsCount > 0 && <span className="pill">{prospectsCount} prospects</span>}
         </div>
       </div>
 
@@ -151,118 +321,133 @@ export default async function DashboardPage() {
           <div className="panel-head">
             <div>
               <h2>Next best action</h2>
-              <p>Coach-focused video is currently your strongest campaign format.</p>
+              <p>Based on your actual workspace, not a template.</p>
             </div>
             <span className="pill pill-accent">Recommended</span>
           </div>
           <div className="panel-body">
-            <div className="preview-stage">
-              <span className="preview-badge pill pill-live">
-                <span className="dot" /> Ready
-              </span>
-              <button type="button" className="play" aria-label="Play preview">
-                <Icon name="play" strokeWidth={0} style={{ fill: 'currentColor' }} />
-              </button>
-              <div className="preview-meta">
-                <b>Mission 1000 — Coaches</b>
-                <small>00:34 · Vertical short · Hook: &ldquo;Build what you control&rdquo;</small>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="button" className="btn btn-primary">
-                <Icon name="check" />
-                Approve &amp; schedule
-              </button>
-              <button type="button" className="btn">
-                <Icon name="wand" />
-                Edit script
-              </button>
-              <button type="button" className="btn btn-ghost">
-                Regenerate
-              </button>
-            </div>
+            {!destination ? (
+              <>
+                <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--text-2)', marginTop: 0 }}>
+                  <b style={{ color: 'var(--text-1)' }}>Set your Mission 1000 destination.</b> Until it&apos;s set,
+                  HubElites has nowhere to send the traffic your campaigns create. It takes ten seconds — the form is
+                  in the destination panel below.
+                </p>
+                <a className="btn btn-primary" href="#destination">
+                  <Icon name="link" />
+                  Add my destination
+                </a>
+              </>
+            ) : draftCampaign ? (
+              <>
+                <div className="onb-review" style={{ marginTop: 0 }}>
+                  <div>
+                    <span>Campaign</span>
+                    <b>{draftCampaign.title}</b>
+                  </div>
+                  <div>
+                    <span>Audience</span>
+                    <b>
+                      {draftCampaign.audience_id
+                        ? audienceNameById.get(draftCampaign.audience_id as string) ?? '—'
+                        : draftBrief.audiences?.join(', ') || '—'}
+                    </b>
+                  </div>
+                  <div>
+                    <span>Channels</span>
+                    <b>{draftBrief.channels?.join(', ') || '—'}</b>
+                  </div>
+                  <div>
+                    <span>Voice</span>
+                    <b>{draftBrief.tone ?? (brand?.voice_style as string | undefined) ?? '—'}</b>
+                  </div>
+                  <div>
+                    <span>Status</span>
+                    <b>Draft — saved and ready</b>
+                  </div>
+                </div>
+                <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text-2)' }}>
+                  This draft was created from your setup answers. Campaign generation — angle, calendar, posts,
+                  emails and scripts — is the next build phase, and it starts from exactly this brief.
+                </p>
+              </>
+            ) : (
+              <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--text-2)', marginTop: 0 }}>
+                Your workspace and destination are set. Your first campaign draft will be created from your setup
+                answers — if you&apos;re seeing this, finish setup and it appears here.
+              </p>
+            )}
           </div>
         </section>
 
         <section className="panel">
           <div className="panel-head">
             <div>
-              <h2>AI recommendations</h2>
-              <p>What HubElites thinks you should do next.</p>
+              <h2>Setup checklist</h2>
+              <p>
+                {checklistDone} of {checklist.length} complete — this is your real workspace state.
+              </p>
             </div>
           </div>
           <div className="rows">
-            <div className="row-item">
-              <span className="ichip ichip-sm ichip-blue">
-                <Icon name="trend" />
-              </span>
-              <div>
-                <b>Run another coach campaign</b>
-                <small>4.3× more clicks than generic content.</small>
+            {checklist.map((item) => (
+              <div className="row-item" key={item.title}>
+                <span className={`ichip ichip-sm ${item.done ? 'ichip-emerald' : 'ichip-amber'}`}>
+                  <Icon name={item.done ? 'check' : 'bolt'} />
+                </span>
+                <div>
+                  <b>{item.title}</b>
+                  <small>{item.detail}</small>
+                </div>
               </div>
-              <Icon name="arrow" width={16} height={16} />
-            </div>
-            <div className="row-item">
-              <span className="ichip ichip-sm ichip-violet">
-                <Icon name="plug" />
-              </span>
-              <div>
-                <b>Finish your YouTube connection</b>
-                <small>2 videos are ready to publish.</small>
-              </div>
-              <Icon name="arrow" width={16} height={16} />
-            </div>
-            <div className="row-item">
-              <span className="ichip ichip-sm ichip-emerald">
-                <Icon name="credit" />
-              </span>
-              <div>
-                <b>Credit balance is healthy</b>
-                <small>84 credits remaining this cycle.</small>
-              </div>
-              <Icon name="arrow" width={16} height={16} />
-            </div>
-            <div className="row-item">
-              <span className="ichip ichip-sm ichip-amber">
-                <Icon name="target" />
-              </span>
-              <div>
-                <b>Add a second audience</b>
-                <small>Consultants share 70% of your winning angle.</small>
-              </div>
-              <Icon name="arrow" width={16} height={16} />
-            </div>
+            ))}
           </div>
         </section>
       </div>
+
+      <section className="panel" id="destination">
+        <div className="panel-head">
+          <div>
+            <h2>Your destination</h2>
+            <p>The funnel every HubElites call to action points to. It stays yours — registration, checkout and attribution happen there.</p>
+          </div>
+          {destinationHost && <span className="pill pill-live"><span className="dot" /> Active</span>}
+        </div>
+        <div className="panel-body">
+          <DestinationForm initialUrl={(destination?.destination_url as string | undefined) ?? ''} />
+        </div>
+      </section>
 
       <section className="panel">
         <div className="panel-head">
           <div>
             <h2>Campaign pipeline</h2>
-            <p>Everything HubElites generated for Mission 1000 · Coaches.</p>
+            <p>Your real assets, grouped by where they are in the workflow.</p>
           </div>
-          <a className="btn btn-sm" href="#">
-            Open campaign
-            <Icon name="arrow-up-right" />
-          </a>
         </div>
         <div className="panel-body">
           <div className="board">
-            {board.map((column) => (
+            {boardColumns.map((column) => (
               <div className="board-col" key={column.title}>
                 <header>
                   {column.title}
-                  <span>{column.count}</span>
+                  <span>{column.rows.length}</span>
                 </header>
-                {column.cards.map((card) => (
-                  <article className="board-card" key={card.title}>
-                    <b>{card.title}</b>
-                    <div className="meta">
-                      <span>{card.meta}</span>
-                    </div>
-                  </article>
-                ))}
+                {column.rows.length === 0 ? (
+                  <p style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--text-3)', margin: '4px 2px' }}>{column.empty}</p>
+                ) : (
+                  column.rows.slice(0, 6).map((asset) => (
+                    <article className="board-card" key={asset.id}>
+                      <b>{asset.title ?? typeLabels[asset.type] ?? asset.type}</b>
+                      <div className="meta">
+                        <span>
+                          {typeLabels[asset.type] ?? asset.type}
+                          {asset.channel ? ` · ${asset.channel}` : ''}
+                        </span>
+                      </div>
+                    </article>
+                  ))
+                )}
               </div>
             ))}
           </div>
@@ -273,23 +458,30 @@ export default async function DashboardPage() {
         <div className="panel-head">
           <div>
             <h2>This week&apos;s calendar</h2>
-            <p>Cadence generated by the Campaign Brain.</p>
+            <p>Filled from assets that actually have a scheduled date.</p>
           </div>
-          <span className="pill">7 slots · 9 assets</span>
+          <span className="pill">
+            {scheduledAssets.length} scheduled
+          </span>
         </div>
         <div className="panel-body">
           <div className="week">
-            {week.map((day) => (
+            {weekDays.map((day) => (
               <div className="week-day" key={day.day}>
                 <span>{day.day}</span>
-                {day.chips.map((chip) => (
-                  <span className={`week-chip ${chip.tone}`} key={chip.label}>
+                {day.chips.map((chip, index) => (
+                  <span className={`week-chip ${chip.tone}`} key={`${chip.label}-${index}`}>
                     {chip.label}
                   </span>
                 ))}
               </div>
             ))}
           </div>
+          {scheduledAssets.length === 0 && (
+            <p style={{ fontSize: 13.5, color: 'var(--text-3)', marginTop: 14 }}>
+              Nothing scheduled yet. When campaign assets are approved and dated, they appear here day by day.
+            </p>
+          )}
         </div>
       </section>
     </AppShell>

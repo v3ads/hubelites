@@ -4,10 +4,10 @@ const columns = [
   {
     title: 'Platform',
     links: [
-      { label: 'The system', href: '#system' },
-      { label: 'Five engines', href: '#engines' },
-      { label: 'Campaign workflow', href: '#workflow' },
-      { label: 'Why HubElites', href: '#difference' },
+      { label: 'The system', href: '/#system' },
+      { label: 'Five engines', href: '/#engines' },
+      { label: 'Campaign workflow', href: '/#workflow' },
+      { label: 'Why HubElites', href: '/#difference' },
     ],
   },
   {
@@ -16,16 +16,16 @@ const columns = [
       { label: 'Start building', href: '/onboarding' },
       { label: 'Log in', href: '/login' },
       { label: 'Ambassador dashboard', href: '/dashboard' },
-      { label: 'FAQ', href: '#faq' },
+      { label: 'FAQ', href: '/#faq' },
     ],
   },
   {
     title: 'Company',
     links: [
-      { label: 'Independence notice', href: '#faq' },
-      { label: 'Privacy', href: '#faq' },
-      { label: 'Terms', href: '#faq' },
-      { label: 'Contact', href: 'mailto:hello@hubelites.com' },
+      { label: 'Independence notice', href: '/#faq' },
+      { label: 'Privacy', href: '/privacy' },
+      { label: 'Terms', href: '/terms' },
+      { label: 'Contact', href: 'mailto:support@hubelites.com' },
     ],
   },
 ];

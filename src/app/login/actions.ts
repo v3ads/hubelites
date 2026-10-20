@@ -17,7 +17,7 @@ export async function requestLoginCode(formData: FormData) {
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: false },
+    options: { shouldCreateUser: true },
   });
 
   if (error) redirect(loginUrl({ error: error.message, email }));
@@ -35,12 +35,23 @@ export async function verifyLoginCode(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.verifyOtp({
+  const { data, error } = await supabase.auth.verifyOtp({
     email,
     token,
     type: 'email',
   });
 
   if (error) redirect(loginUrl({ sent: '1', email, error: error.message }));
+
+  // New and unfinished accounts go to onboarding; finished ones go to the dashboard.
+  const userId = data.user?.id;
+  if (userId) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('onboarding_completed_at')
+      .eq('id', userId)
+      .maybeSingle();
+    if (!profile?.onboarding_completed_at) redirect('/onboarding');
+  }
   redirect('/dashboard');
 }
