@@ -1,54 +1,66 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
-import { AppShell, type NavGroup } from '@/components/app/app-shell';
+import { AppShell } from '@/components/app/app-shell';
+import { adminNav } from '@/components/app/admin-nav';
 import { Icon } from '@/components/icon';
 
 export const metadata = { title: 'Platform Overview' };
 
-const nav: NavGroup[] = [
-  {
-    items: [
-      { label: 'Platform Overview', icon: 'grid', href: '/admin', active: true },
-      { label: 'Members', icon: 'users', href: '#' },
-      { label: 'Organizations', icon: 'layers', href: '#' },
-      { label: 'Campaigns', icon: 'sparkles', href: '#' },
-      { label: 'Media Jobs', icon: 'video', href: '#' },
-    ],
-  },
-  {
-    title: 'Control',
-    items: [
-      { label: 'Provider Catalog', icon: 'plug', href: '#' },
-      { label: 'Credit Ledger', icon: 'credit', href: '#' },
-      { label: 'Mission Brain', icon: 'brain', href: '#' },
-      { label: 'System Health', icon: 'shield', href: '#' },
-      { label: 'Audit Log', icon: 'lock', href: '#' },
-    ],
-  },
-];
+function dailyBars(rows: { created_at: string }[]) {
+  const days: number[] = Array.from({ length: 7 }, () => 0);
+  const now = new Date();
+  for (const row of rows) {
+    const diff = Math.floor((now.getTime() - new Date(row.created_at).getTime()) / 86_400_000);
+    if (diff >= 0 && diff < 7) days[6 - diff] += 1;
+  }
+  const max = Math.max(...days, 1);
+  return days.map((count) => Math.max(12, Math.round((count / max) * 100)));
+}
 
-const kpis = [
-  { label: 'Members', value: '247', delta: '+18 / 30d', tone: '', bars: [30, 38, 44, 52, 58, 70, 82] },
-  { label: 'Campaigns', value: '1,483', delta: '+126 / 30d', tone: 'violet', bars: [26, 34, 40, 46, 60, 66, 78] },
-  { label: 'Assets generated', value: '8,420', delta: '+912 / 30d', tone: 'cyan', bars: [20, 32, 38, 50, 56, 64, 74] },
-  { label: 'Media credits used', value: '2,914', delta: 'Margin 61%', tone: 'lime', bars: [24, 30, 36, 44, 52, 62, 70] },
-];
+function count30d(rows: { created_at: string }[]) {
+  const cutoff = Date.now() - 30 * 86_400_000;
+  return rows.filter((row) => new Date(row.created_at).getTime() >= cutoff).length;
+}
 
-const tenants = [
-  { org: 'Northline Coaching', owner: 'dana@northline.co', campaigns: 34, credits: 412, status: 'Healthy' },
-  { org: 'Rivera Creative', owner: 'marco@riveracreative.com', campaigns: 27, credits: 286, status: 'Healthy' },
-  { org: 'Summit Consulting', owner: 'ella@summitcg.com', campaigns: 19, credits: 154, status: 'Low credits' },
-  { org: 'BrightPath Studio', owner: 'noah@brightpath.io', campaigns: 12, credits: 96, status: 'Onboarding' },
-  { org: 'Harbor & Co.', owner: 'lena@harborco.com', campaigns: 8, credits: 62, status: 'Healthy' },
-];
+type HealthItem = { name: string; detail: string; status: string; ok: boolean | null };
 
-const health = [
-  { name: 'Supabase', detail: 'Auth · Postgres · Storage', status: 'Operational', tone: 'ichip-emerald' },
-  { name: 'Brevo SMTP', detail: 'Login codes · Campaign mail', status: 'Operational', tone: 'ichip-emerald' },
-  { name: 'OpenRouter', detail: 'Reasoning + routing', status: 'Operational', tone: 'ichip-emerald' },
-  { name: 'HeyGen', detail: 'Avatar video jobs', status: 'Degraded queue', tone: 'ichip-amber' },
-  { name: 'Higgsfield', detail: 'Generative b-roll', status: 'Operational', tone: 'ichip-emerald' },
-];
+async function checkOpenRouter(): Promise<HealthItem> {
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!key) return { name: 'OpenRouter', detail: 'Campaign Brain reasoning', status: 'Not configured', ok: null };
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/auth/key', {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    return {
+      name: 'OpenRouter',
+      detail: 'Campaign Brain reasoning',
+      status: response.ok ? 'Operational' : `HTTP ${response.status}`,
+      ok: response.ok,
+    };
+  } catch {
+    return { name: 'OpenRouter', detail: 'Campaign Brain reasoning', status: 'Unreachable', ok: false };
+  }
+}
+
+async function checkBrevo(): Promise<HealthItem> {
+  const key = process.env.BREVO_API_KEY;
+  if (!key) return { name: 'Brevo', detail: 'Login codes · Campaign mail', status: 'Not configured', ok: null };
+  try {
+    const response = await fetch('https://api.brevo.com/v3/account', {
+      headers: { 'api-key': key },
+      signal: AbortSignal.timeout(5000),
+    });
+    return {
+      name: 'Brevo',
+      detail: 'Login codes · Campaign mail',
+      status: response.ok ? 'Operational' : `HTTP ${response.status}`,
+      ok: response.ok,
+    };
+  } catch {
+    return { name: 'Brevo', detail: 'Login codes · Campaign mail', status: 'Unreachable', ok: false };
+  }
+}
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -57,15 +69,103 @@ export default async function AdminPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: profile } = await supabase.from('profiles').select('is_super_admin').eq('id', user.id).single();
+  const { data: profile } = await supabase.from('profiles').select('is_super_admin,display_name').eq('id', user.id).single();
   if (!profile?.is_super_admin) redirect('/dashboard');
 
+
+  const [membersResult, orgsResult, campaignsResult, assetsResult, walletsResult, jobsResult, brainResult, auditResult, healthOpenRouter, healthBrevo] =
+    await Promise.all([
+      supabase.from('profiles').select('id,email,created_at').order('created_at', { ascending: false }).limit(1000),
+      supabase.from('organizations').select('id,name,created_at').order('created_at', { ascending: false }).limit(50),
+      supabase.from('campaigns').select('id,organization_id,created_at').order('created_at', { ascending: false }).limit(1000),
+      supabase.from('campaign_assets').select('id,created_at').order('created_at', { ascending: false }).limit(2000),
+      supabase.from('credit_wallets').select('organization_id,balance,lifetime_purchased,lifetime_used'),
+      supabase.from('generation_jobs').select('id,status,provider_cost_micros,created_at').order('created_at', { ascending: false }).limit(500),
+      supabase.from('mission_brain_items').select('id,status,updated_at').order('updated_at', { ascending: false }).limit(100),
+      supabase.from('audit_log').select('id,action,entity_type,created_at').order('created_at', { ascending: false }).limit(5),
+      checkOpenRouter(),
+      checkBrevo(),
+    ]);
+
+  const members = membersResult.data ?? [];
+  const orgs = orgsResult.data ?? [];
+  const campaigns = campaignsResult.data ?? [];
+  const assets = assetsResult.data ?? [];
+  const wallets = walletsResult.data ?? [];
+  const jobs = jobsResult.data ?? [];
+  const brainItems = brainResult.data ?? [];
+  const auditEvents = auditResult.data ?? [];
+
+  const creditsUsed = wallets.reduce((sum, wallet) => sum + ((wallet.lifetime_used as number) ?? 0), 0);
+  const creditsSold = wallets.reduce((sum, wallet) => sum + ((wallet.lifetime_purchased as number) ?? 0), 0);
+  const creditsConsumed = creditsUsed;
+  const jobsSucceeded = jobs.filter((job) => job.status === 'succeeded').length;
+  const jobsFailed = jobs.filter((job) => job.status === 'failed').length;
+  const activeBrain = brainItems.filter((item) => item.status === 'active').length;
+  const brainUpdated = brainItems[0]?.updated_at
+    ? new Date(brainItems[0].updated_at as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : 'never';
+
+  const kpis = [
+    { label: 'Members', value: String(members.length), delta: `+${count30d(members)} / 30d`, tone: '', bars: dailyBars(members) },
+    { label: 'Campaigns', value: String(campaigns.length), delta: `+${count30d(campaigns)} / 30d`, tone: 'violet', bars: dailyBars(campaigns) },
+    { label: 'Assets generated', value: String(assets.length), delta: `+${count30d(assets)} / 30d`, tone: 'cyan', bars: dailyBars(assets) },
+    {
+      label: 'Media credits used',
+      value: String(creditsUsed),
+      delta: creditsSold ? `of ${creditsSold} purchased` : 'No purchases yet',
+      tone: 'lime',
+      bars: dailyBars(jobs as unknown as { created_at: string }[]),
+    },
+  ];
+
+  // Tenant table: real organizations with owner, campaign count, wallet balance, derived status.
+  const { data: ownerRows } = await supabase
+    .from('organization_members')
+    .select('organization_id,user_id,profiles(email)')
+    .eq('role', 'owner');
+  const ownerEmailByOrg = new Map<string, string>();
+  for (const row of ownerRows ?? []) {
+    const profileRef = (row as unknown as { profiles: { email: string } | null }).profiles;
+    if (profileRef?.email) ownerEmailByOrg.set(row.organization_id as string, profileRef.email);
+  }
+  const campaignsByOrg = new Map<string, number>();
+  for (const campaign of campaigns) {
+    const orgId = campaign.organization_id as string;
+    campaignsByOrg.set(orgId, (campaignsByOrg.get(orgId) ?? 0) + 1);
+  }
+  const walletByOrg = new Map(wallets.map((wallet) => [wallet.organization_id as string, wallet]));
+
+  const tenants = orgs.slice(0, 10).map((org) => {
+    const wallet = walletByOrg.get(org.id as string);
+    const campaignCount = campaignsByOrg.get(org.id as string) ?? 0;
+    const balance = (wallet?.balance as number | undefined) ?? 0;
+    const used = (wallet?.lifetime_used as number | undefined) ?? 0;
+    const status = campaignCount === 0 ? 'Onboarding' : used > 0 && balance === 0 ? 'Low credits' : 'Healthy';
+    return {
+      org: org.name as string,
+      owner: ownerEmailByOrg.get(org.id as string) ?? '—',
+      campaigns: campaignCount,
+      credits: balance,
+      status,
+    };
+  });
+
+  const health: HealthItem[] = [
+    { name: 'Supabase', detail: 'Auth · Postgres · Storage', status: membersResult.error ? 'Unreachable' : 'Operational', ok: !membersResult.error },
+    healthBrevo.ok === null ? { ...healthBrevo, detail: 'Login codes · Campaign mail' } : healthBrevo,
+    healthOpenRouter,
+    { name: 'HeyGen', detail: 'Avatar video jobs', status: process.env.HEYGEN_API_KEY ? 'Key configured' : 'Not configured — media phase', ok: null },
+    { name: 'Higgsfield', detail: 'Generative media', status: process.env.HIGGSFIELD_API_KEY ? 'Key configured' : 'Not configured — media phase', ok: null },
+  ];
+  const degraded = health.filter((item) => item.ok === false).length;
+
   const email = user.email ?? 'admin@hubelites.com';
-  const name = ((user.user_metadata?.full_name as string | undefined) ?? email.split('@')[0]) || 'Super Admin';
+  const name = (profile.display_name as string | undefined) ?? email.split('@')[0] ?? 'Super Admin';
 
   return (
     <AppShell
-      groups={nav}
+      groups={adminNav('Platform Overview')}
       crumbs={['Platform', 'Overview']}
       user={{ name, email, role: 'Super Admin' }}
       badge={{ label: 'Super Admin', tone: 'pill-violet' }}
@@ -79,13 +179,17 @@ export default async function AdminPage() {
       <div className="page-head">
         <div>
           <h1>Platform overview</h1>
-          <p>Global visibility across tenants, campaigns, media economics and system health.</p>
+          <p>Real platform data — every number below is read live from the database and the providers.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <span className="pill pill-live">
-            <span className="dot" /> All core services up
-          </span>
-          <span className="pill pill-warn">1 provider degraded</span>
+          {degraded === 0 ? (
+            <span className="pill pill-live">
+              <span className="dot" /> Core services operational
+            </span>
+          ) : (
+            <span className="pill pill-warn">{degraded} service{degraded === 1 ? '' : 's'} need attention</span>
+          )}
+          <span className="pill">{orgs.length} organization{orgs.length === 1 ? '' : 's'}</span>
         </div>
       </div>
 
@@ -111,50 +215,50 @@ export default async function AdminPage() {
           <div className="panel-head">
             <div>
               <h2>Tenant activity</h2>
-              <p>Most active organizations in the last 30 days.</p>
+              <p>Organizations on the platform, newest first.</p>
             </div>
-            <a className="btn btn-sm" href="#">
-              All organizations
-              <Icon name="arrow-up-right" />
-            </a>
           </div>
           <div className="panel-body flush" style={{ padding: '16px 8px 8px' }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Organization</th>
-                  <th>Owner</th>
-                  <th>Campaigns</th>
-                  <th>Credits</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tenants.map((tenant) => (
-                  <tr key={tenant.org}>
-                    <td>
-                      <b>{tenant.org}</b>
-                    </td>
-                    <td>{tenant.owner}</td>
-                    <td>{tenant.campaigns}</td>
-                    <td>{tenant.credits}</td>
-                    <td>
-                      <span
-                        className={
-                          tenant.status === 'Healthy'
-                            ? 'pill pill-live'
-                            : tenant.status === 'Low credits'
-                              ? 'pill pill-warn'
-                              : 'pill pill-accent'
-                        }
-                      >
-                        {tenant.status}
-                      </span>
-                    </td>
+            {tenants.length === 0 ? (
+              <p style={{ padding: '0 16px 12px', fontSize: 14, color: 'var(--text-3)' }}>No organizations yet.</p>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Organization</th>
+                    <th>Owner</th>
+                    <th>Campaigns</th>
+                    <th>Credits</th>
+                    <th>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {tenants.map((tenant) => (
+                    <tr key={tenant.org}>
+                      <td>
+                        <b>{tenant.org}</b>
+                      </td>
+                      <td>{tenant.owner}</td>
+                      <td>{tenant.campaigns}</td>
+                      <td>{tenant.credits}</td>
+                      <td>
+                        <span
+                          className={
+                            tenant.status === 'Healthy'
+                              ? 'pill pill-live'
+                              : tenant.status === 'Low credits'
+                                ? 'pill pill-warn'
+                                : 'pill pill-accent'
+                          }
+                        >
+                          {tenant.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </section>
 
@@ -162,14 +266,14 @@ export default async function AdminPage() {
           <div className="panel-head">
             <div>
               <h2>System health</h2>
-              <p>Providers and core services.</p>
+              <p>Checked live when this page loaded.</p>
             </div>
           </div>
           <div className="health">
             {health.map((item) => (
               <div key={item.name}>
-                <span className={`ichip ichip-sm ${item.tone}`}>
-                  <Icon name={item.status === 'Operational' ? 'check' : 'bolt'} />
+                <span className={`ichip ichip-sm ${item.ok === true ? 'ichip-emerald' : item.ok === false ? 'ichip-amber' : 'ichip-violet'}`}>
+                  <Icon name={item.ok === true ? 'check' : 'bolt'} />
                 </span>
                 <div>
                   <b>{item.name}</b>
@@ -186,7 +290,7 @@ export default async function AdminPage() {
         <section className="panel">
           <div className="panel-head">
             <h2>Mission Brain</h2>
-            <span className="pill pill-accent">Live</span>
+            <span className="pill pill-accent">{activeBrain} active</span>
           </div>
           <div className="panel-body">
             <p style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6 }}>
@@ -198,44 +302,51 @@ export default async function AdminPage() {
                   <Icon name="brain" />
                 </span>
                 <div>
-                  <b>34 approved items</b>
-                  <small>Last updated 2 days ago</small>
+                  <b>
+                    {activeBrain} approved item{activeBrain === 1 ? '' : 's'} of {brainItems.length}
+                  </b>
+                  <small>Last updated {brainUpdated}</small>
                 </div>
               </div>
-              <div className="meter meter-spectrum">
-                <i style={{ width: '82%' }} />
-              </div>
-              <small style={{ fontSize: 11, color: 'var(--text-4)' }}>82% of items reviewed this cycle</small>
+              <a className="btn btn-sm" href="/admin/mission-brain" style={{ justifySelf: 'start' }}>
+                Open Mission Brain
+                <Icon name="arrow" />
+              </a>
             </div>
           </div>
         </section>
 
         <section className="panel">
           <div className="panel-head">
-            <h2>Media economics</h2>
-            <span className="pill">30 days</span>
+            <h2>Generation & credits</h2>
+            <span className="pill">All time</span>
           </div>
           <div className="panel-body">
             <div className="credit-visual">
               <div className="row">
-                <span>Credits sold</span>
-                <b>7,480</b>
-              </div>
-              <div className="meter">
-                <i style={{ width: '78%' }} />
+                <span>Credits purchased</span>
+                <b>{creditsSold}</b>
               </div>
               <div className="row">
                 <span>Credits consumed</span>
-                <b>2,914</b>
-              </div>
-              <div className="meter meter-emerald">
-                <i style={{ width: '39%' }} />
+                <b>{creditsConsumed}</b>
               </div>
               <div className="row">
-                <span>Provider cost ratio</span>
-                <b>39%</b>
+                <span>Generation jobs</span>
+                <b>{jobs.length}</b>
+              </div>
+              <div className="row">
+                <span>Jobs succeeded / failed</span>
+                <b>
+                  {jobsSucceeded} / {jobsFailed}
+                </b>
               </div>
             </div>
+            {jobs.length === 0 && (
+              <p style={{ fontSize: 12.5, color: 'var(--text-4)', marginTop: 12 }}>
+                No generation jobs yet. The first campaign generation will appear here with its provider cost.
+              </p>
+            )}
           </div>
         </section>
 
@@ -244,33 +355,23 @@ export default async function AdminPage() {
             <h2>Recent audit events</h2>
           </div>
           <div className="rows">
-            <div className="row-item">
-              <span className="ichip ichip-sm ichip-blue">
-                <Icon name="lock" />
-              </span>
-              <div>
-                <b>Super admin promoted</b>
-                <small>bootstrap · 3 days ago</small>
+            {auditEvents.length === 0 && (
+              <p style={{ padding: 16, fontSize: 14, color: 'var(--text-3)' }}>No audit events recorded yet.</p>
+            )}
+            {auditEvents.map((event) => (
+              <div className="row-item" key={event.id as string}>
+                <span className="ichip ichip-sm ichip-blue">
+                  <Icon name="lock" />
+                </span>
+                <div>
+                  <b>{event.action as string}</b>
+                  <small>
+                    {(event.entity_type as string | null) ?? 'platform'} ·{' '}
+                    {new Date(event.created_at as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </small>
+                </div>
               </div>
-            </div>
-            <div className="row-item">
-              <span className="ichip ichip-sm ichip-amber">
-                <Icon name="credit" />
-              </span>
-              <div>
-                <b>Credit refund issued</b>
-                <small>Summit Consulting · 18 credits</small>
-              </div>
-            </div>
-            <div className="row-item">
-              <span className="ichip ichip-sm ichip-violet">
-                <Icon name="brain" />
-              </span>
-              <div>
-                <b>Mission Brain item updated</b>
-                <small>Webinar CTA copy · 2 days ago</small>
-              </div>
-            </div>
+            ))}
           </div>
         </section>
       </div>
