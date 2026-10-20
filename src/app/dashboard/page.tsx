@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
-import { AppShell, type NavGroup } from '@/components/app/app-shell';
+import { AppShell } from '@/components/app/app-shell';
+import { memberNav } from '@/components/app/member-nav';
 import { DestinationForm } from '@/components/app/destination-form';
 import { Icon } from '@/components/icon';
 
@@ -178,7 +179,7 @@ export default async function DashboardPage() {
 
   const boardColumns = [
     { title: 'Drafting', rows: draftAssets, empty: 'Draft assets appear here as campaigns are generated.' },
-    { title: 'Needs approval', rows: readyAssets, empty: 'Assets waiting on your approval land here.' },
+    { title: 'Ready & approved', rows: readyAssets, empty: 'Assets waiting on your approval land here.' },
     { title: 'Scheduled', rows: scheduledAssets, empty: 'Approved assets get scheduled here.' },
     { title: 'Published', rows: publishedAssets, empty: 'Published assets and their results show here.' },
   ];
@@ -240,29 +241,7 @@ export default async function DashboardPage() {
   ];
   const checklistDone = checklist.filter((item) => item.done).length;
 
-  const nav: NavGroup[] = [
-    {
-      items: [
-        { label: 'Home', icon: 'grid', href: '/dashboard', active: true },
-        { label: 'Campaigns', icon: 'layers', href: '#' },
-        { label: 'Create', icon: 'sparkles', href: '#', tag: 'AI' },
-        { label: 'Content', icon: 'image', href: '#' },
-        { label: 'Calendar', icon: 'calendar', href: '#' },
-        { label: 'Prospects', icon: 'users', href: '#' },
-        { label: 'Analytics', icon: 'chart', href: '#' },
-      ],
-    },
-    {
-      title: 'Workspace',
-      items: [
-        { label: 'Brand', icon: 'wand', href: '#' },
-        { label: 'Connections', icon: 'plug', href: '#' },
-        { label: 'Credits', icon: 'credit', href: '#' },
-        { label: 'Settings', icon: 'settings', href: '#' },
-        ...(isSuperAdmin ? [{ label: 'Admin', icon: 'shield' as const, href: '/admin' }] : []),
-      ],
-    },
-  ];
+  const nav = memberNav('Home', isSuperAdmin);
 
   return (
     <AppShell
@@ -271,7 +250,7 @@ export default async function DashboardPage() {
       user={{ name, email, role: isSuperAdmin ? 'Super Admin' : 'Ambassador' }}
       credits={creditTotal > 0 ? { used: creditUsed, total: creditTotal } : undefined}
       action={
-        <a className="btn btn-primary" href="#">
+        <a className="btn btn-primary" href="/campaigns/new">
           <Icon name="sparkles" />
           Create with AI
         </a>
@@ -443,6 +422,7 @@ export default async function DashboardPage() {
                         <span>
                           {typeLabels[asset.type] ?? asset.type}
                           {asset.channel ? ` · ${asset.channel}` : ''}
+                          {asset.status === 'approved' ? ' · Approved' : ''}
                         </span>
                       </div>
                     </article>
