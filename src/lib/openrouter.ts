@@ -1,6 +1,23 @@
-// Server-only OpenRouter client for the Campaign Brain.
-// The API key lives in the platform environment (OPENROUTER_API_KEY) and is
-// never exposed to browsers. Model can be overridden with OPENROUTER_MODEL.
+// Server-only Campaign Brain generation.
+//
+// Provider routing (owner decision, 2026-10-25): Anthropic is a FIRST-SPEND
+// layer in front of OpenRouter, never a replacement. When ANTHROPIC_API_KEY
+// is configured and the hubelites-generation workload is under its $35
+// per-cycle cap (ai-config.ts), generation calls Anthropic direct; at the
+// cap, or on any Anthropic error / rate limit / timeout / malformed output,
+// it falls back silently to the original OpenRouter call below — same
+// prompts, same parsing, same outputs. When ANTHROPIC_API_KEY is absent the
+// OpenRouter path runs exactly as it always has.
+// Keys live in the platform environment and are never exposed to browsers.
+
+import {
+  AI_WORKLOADS,
+  attemptAnthropicFirst,
+  capUsdFor,
+  estimateCostUsd,
+} from '@/lib/ai-config';
+import { callAnthropicMessages } from '@/lib/anthropic';
+import { getAnthropicCycleSpendUsd, recordAiSpend } from '@/lib/ai-ledger';
 
 export type CampaignPlanAsset = {
   type: 'social_post' | 'email' | 'script' | 'image';
@@ -77,11 +94,45 @@ function buildPrompts(context: CampaignContext) {
   return { system, user };
 }
 
-export async function generateCampaignPlan(context: CampaignContext): Promise<{ plan: CampaignPlan; model: string; usage: unknown }> {
+/** Shared parse + validation for whichever provider produced the content. */
+function parsePlan(content: string): CampaignPlan {
+  let parsed: CampaignPlan;
+  try {
+    parsed = JSON.parse(content) as CampaignPlan;
+  } catch {
+    throw new Error('Campaign Brain returned malformed JSON. Nothing was saved — try generating again.');
+  }
+
+  const allowedTypes = new Set(['social_post', 'email', 'script', 'image']);
+  parsed.assets = (parsed.assets ?? []).filter(
+    (asset) => asset && allowedTypes.has(asset.type) && typeof asset.body === 'string' && asset.body.trim().length > 0,
+  );
+  if (!parsed.assets.length) throw new Error('Campaign Brain returned no usable assets. Nothing was saved — try generating again.');
+  parsed.hooks = Array.isArray(parsed.hooks) ? parsed.hooks : [];
+  parsed.objections = Array.isArray(parsed.objections) ? parsed.objections : [];
+  parsed.calendar = Array.isArray(parsed.calendar) ? parsed.calendar : [];
+
+  return parsed;
+}
+
+type RawGeneration = {
+  content: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** Provider-reported USD cost when the provider supplies one (OpenRouter does). */
+  reportedCostUsd?: number | null;
+  /** The provider's raw usage object, returned to callers on the original path. */
+  usageRaw?: unknown;
+};
+
+/** The original OpenRouter call — unchanged request, headers and errors. */
+async function callOpenRouterChat(system: string, user: string): Promise<RawGeneration> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured on the platform.');
   const model = process.env.OPENROUTER_MODEL ?? 'openai/gpt-4o-mini';
-  const { system, user } = buildPrompts(context);
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -110,26 +161,77 @@ export async function generateCampaignPlan(context: CampaignContext): Promise<{ 
 
   const data = (await response.json()) as {
     choices?: { message?: { content?: string } }[];
-    usage?: unknown;
+    usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
   };
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error('OpenRouter returned an empty response.');
 
-  let parsed: CampaignPlan;
-  try {
-    parsed = JSON.parse(content) as CampaignPlan;
-  } catch {
-    throw new Error('Campaign Brain returned malformed JSON. Nothing was saved — try generating again.');
+  return {
+    content,
+    model,
+    inputTokens: data.usage?.prompt_tokens ?? 0,
+    outputTokens: data.usage?.completion_tokens ?? 0,
+    reportedCostUsd: typeof data.usage?.cost === 'number' ? data.usage.cost : null,
+    usageRaw: data.usage ?? null,
+  };
+}
+
+export async function generateCampaignPlan(context: CampaignContext): Promise<{ plan: CampaignPlan; model: string; usage: unknown }> {
+  const { system, user } = buildPrompts(context);
+  const anthropicConfigured = !!process.env.ANTHROPIC_API_KEY;
+
+  if (!anthropicConfigured) {
+    // Original path, byte-for-byte: no ledger, no routing, no behaviour change.
+    const raw = await callOpenRouterChat(system, user);
+    return { plan: parsePlan(raw.content), model: raw.model, usage: raw.usageRaw ?? null };
   }
 
-  const allowedTypes = new Set(['social_post', 'email', 'script', 'image']);
-  parsed.assets = (parsed.assets ?? []).filter(
-    (asset) => asset && allowedTypes.has(asset.type) && typeof asset.body === 'string' && asset.body.trim().length > 0,
-  );
-  if (!parsed.assets.length) throw new Error('Campaign Brain returned no usable assets. Nothing was saved — try generating again.');
-  parsed.hooks = Array.isArray(parsed.hooks) ? parsed.hooks : [];
-  parsed.objections = Array.isArray(parsed.objections) ? parsed.objections : [];
-  parsed.calendar = Array.isArray(parsed.calendar) ? parsed.calendar : [];
+  const workload = AI_WORKLOADS.hubelitesGeneration;
+  const cycleSpendUsd = await getAnthropicCycleSpendUsd(workload);
 
-  return { plan: parsed, model, usage: data.usage ?? null };
+  const { value, provider } = await attemptAnthropicFirst({
+    anthropicConfigured,
+    cycleSpendUsd,
+    capUsd: capUsdFor(workload),
+    tryAnthropic: async () => {
+      const result = await callAnthropicMessages(system, user);
+      // Parsing inside the attempt: malformed Anthropic output counts as an
+      // Anthropic failure and falls back like any other.
+      return { raw: { ...result, reportedCostUsd: null } as RawGeneration, plan: parsePlan(result.content) };
+    },
+    useFallback: async () => {
+      const raw = await callOpenRouterChat(system, user);
+      return { raw, plan: parsePlan(raw.content) };
+    },
+  });
+
+  const { raw, plan } = value;
+  const estCostUsd =
+    raw.reportedCostUsd ??
+    estimateCostUsd(raw.model, {
+      inputTokens: raw.inputTokens,
+      outputTokens: raw.outputTokens,
+      cacheReadTokens: raw.cacheReadTokens,
+      cacheWriteTokens: raw.cacheWriteTokens,
+    });
+
+  await recordAiSpend({
+    workload,
+    provider,
+    model: raw.model,
+    inputTokens: raw.inputTokens,
+    outputTokens: raw.outputTokens,
+    estCostUsd,
+  });
+
+  return {
+    plan,
+    model: raw.model,
+    usage: {
+      cost: estCostUsd,
+      prompt_tokens: raw.inputTokens,
+      completion_tokens: raw.outputTokens,
+      provider,
+    },
+  };
 }

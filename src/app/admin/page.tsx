@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
+import { getAiSpendSummary } from '@/lib/ai-ledger';
+import { AI_WORKLOADS, capUsdFor, cycleLabel } from '@/lib/ai-config';
 import { AppShell } from '@/components/app/app-shell';
 import { adminNav } from '@/components/app/admin-nav';
 import { Icon } from '@/components/icon';
@@ -159,6 +161,12 @@ export default async function AdminPage() {
     { name: 'Higgsfield', detail: 'Generative media', status: process.env.HIGGSFIELD_API_KEY ? 'Key configured' : 'Not configured — media phase', ok: null },
   ];
   const degraded = health.filter((item) => item.ok === false).length;
+
+  // Anthropic credit-cycle readout (fail-safe: null when the ledger is not
+  // installed yet or the service role is unavailable — page renders a hint).
+  const aiSpend = await getAiSpendSummary(AI_WORKLOADS.hubelitesGeneration);
+  const anthropicCap = capUsdFor(AI_WORKLOADS.hubelitesGeneration);
+  const anthropicConfigured = !!process.env.ANTHROPIC_API_KEY;
 
   const email = user.email ?? 'admin@hubelites.com';
   const name = (profile.display_name as string | undefined) ?? email.split('@')[0] ?? 'Super Admin';
@@ -341,7 +349,31 @@ export default async function AdminPage() {
                   {jobsSucceeded} / {jobsFailed}
                 </b>
               </div>
+              <div className="row">
+                <span>Anthropic cycle spend ({cycleLabel()})</span>
+                <b>
+                  {!anthropicConfigured
+                    ? 'Not configured'
+                    : aiSpend
+                      ? `$${aiSpend.anthropicSpendUsd.toFixed(2)} of $${anthropicCap} cap`
+                      : 'Ledger pending'}
+                </b>
+              </div>
+              <div className="row">
+                <span>Last generation provider</span>
+                <b>
+                  {aiSpend?.lastProvider
+                    ? `${aiSpend.lastProvider === 'anthropic' ? 'Anthropic' : 'OpenRouter'}${aiSpend.lastModel ? ` · ${aiSpend.lastModel}` : ''}`
+                    : '—'}
+                </b>
+              </div>
             </div>
+            {anthropicConfigured && !aiSpend && (
+              <p style={{ fontSize: 12.5, color: 'var(--text-4)', marginTop: 12 }}>
+                Anthropic first-spend activates once migration 002 (ai_spend_ledger) is applied in Supabase.
+                Until then generation runs on OpenRouter.
+              </p>
+            )}
             {jobs.length === 0 && (
               <p style={{ fontSize: 12.5, color: 'var(--text-4)', marginTop: 12 }}>
                 No generation jobs yet. The first campaign generation will appear here with its provider cost.
