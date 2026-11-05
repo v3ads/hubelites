@@ -131,18 +131,31 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
   };
 
   // Job + audit rows have no user-level insert policy by design — service role, server-side only.
-  const admin = createAdminClient();
-  const { data: job } = await admin
-    .from('generation_jobs')
-    .insert({
-      organization_id: organizationId,
-      campaign_id: campaign.id,
-      status: 'running',
-      request: { kind: 'campaign_plan', budget_mode: context.budgetMode, audience: audienceName },
-      started_at: new Date().toISOString(),
-    })
-    .select('id')
-    .single();
+  // This setup must never throw unhandled: any failure here returns a visible error to the UI.
+  let admin: ReturnType<typeof createAdminClient>;
+  let job: { id: string } | null = null;
+  try {
+    admin = createAdminClient();
+    const { data: jobRow, error: jobError } = await admin
+      .from('generation_jobs')
+      .insert({
+        organization_id: organizationId,
+        campaign_id: campaign.id,
+        status: 'running',
+        request: { kind: 'campaign_plan', budget_mode: context.budgetMode, audience: audienceName },
+        started_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+    if (jobError) throw new Error(jobError.message);
+    job = jobRow;
+  } catch (setupError) {
+    const detail = setupError instanceof Error ? setupError.message : 'unknown setup failure';
+    return {
+      ok: false,
+      error: `Generation could not start — platform bookkeeping failed (${detail}). Nothing was generated or charged. This is a platform configuration issue (service-role access), not a problem with your campaign.`,
+    };
+  }
 
   await supabase.from('campaigns').update({ status: 'generating' }).eq('id', campaign.id);
 

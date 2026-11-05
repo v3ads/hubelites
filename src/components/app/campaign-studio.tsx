@@ -107,12 +107,19 @@ export function GeneratePanel({ campaignId, hasAssets }: { campaignId: string; h
   async function onGenerate() {
     setRunning(true);
     setError('');
-    const result = await generateCampaign(campaignId);
-    setRunning(false);
-    if (result.ok) {
-      router.refresh();
-    } else {
-      setError(result.error);
+    try {
+      const result = await generateCampaign(campaignId);
+      if (result.ok) {
+        router.refresh();
+      } else {
+        setError(result.error);
+      }
+    } catch {
+      setError(
+        'The request failed before the Campaign Brain could answer (server error). Your campaign is unchanged — try again, and if it repeats, the platform health panel in Admin will show which provider is down.',
+      );
+    } finally {
+      setRunning(false);
     }
   }
 
