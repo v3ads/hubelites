@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
-import { createAdminClient } from '@/lib/supabase-admin';
 import { generateCampaignPlan, type CampaignContext } from '@/lib/openrouter';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -130,13 +129,13 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
     missionBrain: brainItems,
   };
 
-  // Job + audit rows have no user-level insert policy by design — service role, server-side only.
-  // This setup must never throw unhandled: any failure here returns a visible error to the UI.
-  let admin: ReturnType<typeof createAdminClient>;
+  // Bookkeeping rows are written through the member's own session — migration 003
+  // grants tenant-scoped insert/update on generation_jobs and audit_log, so the
+  // engine does not depend on a service-role key in the app environment.
+  // This setup must never throw unhandled: any failure returns a visible error.
   let job: { id: string } | null = null;
   try {
-    admin = createAdminClient();
-    const { data: jobRow, error: jobError } = await admin
+    const { data: jobRow, error: jobError } = await supabase
       .from('generation_jobs')
       .insert({
         organization_id: organizationId,
@@ -153,7 +152,7 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
     const detail = setupError instanceof Error ? setupError.message : 'unknown setup failure';
     return {
       ok: false,
-      error: `Generation could not start — platform bookkeeping failed (${detail}). Nothing was generated or charged. This is a platform configuration issue (service-role access), not a problem with your campaign.`,
+      error: `Generation could not start — platform bookkeeping failed (${detail}). Nothing was generated or charged. This is a platform bookkeeping issue, not a problem with your campaign.`,
     };
   }
 
@@ -203,7 +202,7 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
 
     const usageCost = (usage as { cost?: number } | null)?.cost;
     if (job) {
-      await admin
+      await supabase
         .from('generation_jobs')
         .update({
           status: 'succeeded',
@@ -213,7 +212,7 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
         })
         .eq('id', job.id);
     }
-    await admin.from('audit_log').insert({
+    await supabase.from('audit_log').insert({
       actor_user_id: user.id,
       organization_id: organizationId,
       action: 'campaign.generated',
@@ -225,7 +224,7 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
     const message = error instanceof Error ? error.message : 'Generation failed unexpectedly.';
     await supabase.from('campaigns').update({ status: previousStatus === 'generating' ? 'draft' : previousStatus }).eq('id', campaign.id);
     if (job) {
-      await admin
+      await supabase
         .from('generation_jobs')
         .update({ status: 'failed', error_message: message.slice(0, 500), completed_at: new Date().toISOString() })
         .eq('id', job.id);
