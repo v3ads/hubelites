@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
 import { generateCampaignPlan, type CampaignContext } from '@/lib/openrouter';
+import { estimateGenerationCredits } from '@/lib/credits';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -129,6 +130,25 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
     missionBrain: brainItems,
   };
 
+  // Credit reserve: text campaign generation is estimated before it starts
+  // and the reservation is recorded on the job (founding-phase estimate is 0
+  // credits — media jobs charge through this same path from Phase 4). No job
+  // begins when the estimate exceeds the wallet balance.
+  const creditEstimate = estimateGenerationCredits('text_campaign');
+  if (creditEstimate > 0) {
+    const { data: wallet } = await supabase
+      .from('credit_wallets')
+      .select('balance')
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+    if ((wallet?.balance ?? 0) < creditEstimate) {
+      return {
+        ok: false,
+        error: `This generation needs ${creditEstimate} credits and your balance is ${wallet?.balance ?? 0}. Add a credit pack from the Credits page and try again — nothing was generated or charged.`,
+      };
+    }
+  }
+
   // Bookkeeping rows are written through the member's own session — migration 003
   // grants tenant-scoped insert/update on generation_jobs and audit_log, so the
   // engine does not depend on a service-role key in the app environment.
@@ -141,6 +161,7 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
         organization_id: organizationId,
         campaign_id: campaign.id,
         status: 'running',
+        credits_reserved: creditEstimate,
         request: { kind: 'campaign_plan', budget_mode: context.budgetMode, audience: audienceName },
         started_at: new Date().toISOString(),
       })
@@ -206,6 +227,7 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
         .from('generation_jobs')
         .update({
           status: 'succeeded',
+          credits_charged: creditEstimate,
           provider_cost_micros: typeof usageCost === 'number' ? Math.round(usageCost * 1_000_000) : null,
           response: { assets: assetRows.length, model },
           completed_at: new Date().toISOString(),

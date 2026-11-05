@@ -19,7 +19,7 @@ export function memberNav(activeLabel: string, isSuperAdmin = false): NavGroup[]
       items: [
         { label: 'Brand', icon: 'wand', href: '#' },
         { label: 'Connections', icon: 'plug', href: '#' },
-        { label: 'Credits', icon: 'credit', href: '#' },
+        { label: 'Credits', icon: 'credit', href: '/credits', ...mark('Credits') },
         { label: 'Settings', icon: 'settings', href: '#' },
         ...(isSuperAdmin ? [{ label: 'Admin', icon: 'shield' as const, href: '/admin' }] : []),
       ],

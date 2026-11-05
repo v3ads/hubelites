@@ -16,7 +16,7 @@ export function adminNav(activeLabel: string): NavGroup[] {
       title: 'Control',
       items: [
         { label: 'Provider Catalog', icon: 'plug', href: '#' },
-        { label: 'Credit Ledger', icon: 'credit', href: '#' },
+        { label: 'Credit Ledger', icon: 'credit', href: '/admin/credits', ...mark('Credit Ledger') },
         { label: 'Mission Brain', icon: 'brain', href: '/admin/mission-brain', ...mark('Mission Brain') },
         { label: 'System Health', icon: 'shield', href: '#' },
         { label: 'Audit Log', icon: 'lock', href: '#' },
