@@ -1,0 +1,136 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { createClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
+import { estimateGenerationCredits } from '@/lib/credits';
+import { createAvatarVideo, heygenConfigured } from '@/lib/heygen';
+import { higgsfieldConfigured, submitSoulImage } from '@/lib/higgsfield';
+import { syncMediaAsset, type MediaState } from '@/lib/media-jobs';
+
+type ActionResult = { ok: boolean; error?: string };
+
+function spokenScript(body: string): string {
+  const clean = body.replace(/\s+/g, ' ').trim();
+  if (clean.length <= 900) return clean;
+  const cut = clean.slice(0, 900);
+  const lastSentence = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  return (lastSentence > 300 ? cut.slice(0, lastSentence + 1) : cut).trim();
+}
+
+export async function generateAssetMedia(assetId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Please sign in again.' };
+
+  const { data: asset } = await supabase
+    .from('campaign_assets')
+    .select('id, organization_id, campaign_id, type, title, body, media_url, thumbnail_url, metadata')
+    .eq('id', assetId)
+    .maybeSingle();
+  if (!asset) return { ok: false, error: 'Asset not found.' };
+
+  const kind = asset.type === 'image' ? 'media_image' : asset.type === 'script' ? 'media_video' : null;
+  if (!kind) return { ok: false, error: 'Media generation is available on image briefs and scripts.' };
+  const provider = kind === 'media_image' ? 'higgsfield' : 'heygen';
+  const configured = provider === 'heygen' ? heygenConfigured() : higgsfieldConfigured();
+  if (!configured) {
+    return { ok: false, error: 'Media generation is not switched on yet — the provider connection is still being set up.' };
+  }
+
+  const existing = (asset.metadata as { media?: MediaState })?.media;
+  if (existing?.state === 'processing') return { ok: false, error: 'This asset is already generating — give it a moment, then refresh.' };
+  if (existing?.state === 'ready' && asset.media_url) return { ok: false, error: 'This asset already has media. Discard it and regenerate the campaign copy if you want a different take.' };
+
+  const cost = estimateGenerationCredits(kind);
+  const { data: wallet } = await supabase
+    .from('credit_wallets')
+    .select('balance')
+    .eq('organization_id', asset.organization_id)
+    .maybeSingle();
+  if ((wallet?.balance ?? 0) < cost) {
+    return {
+      ok: false,
+      error: `This ${kind === 'media_image' ? 'image' : 'video'} costs ${cost} credits and your balance is ${wallet?.balance ?? 0}. Add a pack on the Credits page first — nothing was charged.`,
+    };
+  }
+
+  // Job row first (member session, migration 003 policies): the reservation
+  // is on record before any provider spend happens.
+  const { data: job, error: jobError } = await supabase
+    .from('generation_jobs')
+    .insert({
+      organization_id: asset.organization_id,
+      campaign_id: asset.campaign_id,
+      status: 'running',
+      credits_reserved: cost,
+      request: { kind, asset_id: asset.id, provider },
+      started_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+  if (jobError || !job) {
+    return { ok: false, error: 'Media generation could not start — the job could not be recorded. Nothing was charged.' };
+  }
+
+  try {
+    let media: MediaState;
+    if (provider === 'heygen') {
+      const script = spokenScript(asset.body ?? '');
+      if (script.length < 20) throw new Error('The script is too short to render as a video.');
+      const created = await createAvatarVideo({ script, title: asset.title ?? 'HubElites campaign video' });
+      media = { state: 'processing', job_id: job.id, provider, provider_job_id: created.videoId, cost };
+      await supabase
+        .from('generation_jobs')
+        .update({ request: { kind, asset_id: asset.id, provider, engine: created.engine }, response: { provider_job_id: created.videoId } })
+        .eq('id', job.id);
+    } else {
+      const prompt = (asset.body ?? '').trim().slice(0, 1500);
+      if (prompt.length < 20) throw new Error('The image brief is too short to generate from.');
+      const submitted = await submitSoulImage({ prompt });
+      media = { state: 'processing', job_id: job.id, provider, provider_job_id: submitted.requestId, status_url: submitted.statusUrl, cost };
+      await supabase
+        .from('generation_jobs')
+        .update({ response: { provider_job_id: submitted.requestId, status_url: submitted.statusUrl } })
+        .eq('id', job.id);
+    }
+    await supabase
+      .from('campaign_assets')
+      .update({ metadata: { ...(asset.metadata as object), media }, updated_at: new Date().toISOString() })
+      .eq('id', asset.id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'The provider could not start this generation.';
+    await supabase
+      .from('generation_jobs')
+      .update({ status: 'failed', error_message: message.slice(0, 500), completed_at: new Date().toISOString() })
+      .eq('id', job.id);
+    return { ok: false, error: `Generation did not start: ${message} Nothing was charged.` };
+  }
+
+  revalidatePath(`/campaigns/${asset.campaign_id}`);
+  return { ok: true };
+}
+
+export async function refreshAssetMedia(assetId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Please sign in again.' };
+
+  // Ownership proven through the member session (RLS) before the
+  // service-role sync touches wallets or assets.
+  const { data: asset } = await supabase
+    .from('campaign_assets')
+    .select('id, organization_id, campaign_id, type, title, media_url, thumbnail_url, metadata')
+    .eq('id', assetId)
+    .maybeSingle();
+  if (!asset) return { ok: false, error: 'Asset not found.' };
+
+  const admin = createAdminClient();
+  await syncMediaAsset(admin, asset as Parameters<typeof syncMediaAsset>[1]);
+  revalidatePath(`/campaigns/${asset.campaign_id}`);
+  return { ok: true };
+}

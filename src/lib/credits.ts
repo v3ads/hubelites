@@ -60,7 +60,7 @@ export type GenerationKind = 'text_campaign' | 'media_image' | 'media_video';
 export const GENERATION_CREDIT_COSTS: Record<GenerationKind, number> = {
   text_campaign: 0,
   media_image: 12,
-  media_video: 85,
+  media_video: 120,
 };
 
 export function estimateGenerationCredits(kind: GenerationKind): number {

@@ -1,9 +1,14 @@
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { AppShell } from '@/components/app/app-shell';
 import { memberNav } from '@/components/app/member-nav';
-import { AssetCard, GeneratePanel, type AssetView } from '@/components/app/campaign-studio';
+import { AssetCard, GeneratePanel, type AssetView, type MediaOptions } from '@/components/app/campaign-studio';
 import { Icon } from '@/components/icon';
+import { estimateGenerationCredits } from '@/lib/credits';
+import { heygenConfigured } from '@/lib/heygen';
+import { higgsfieldConfigured } from '@/lib/higgsfield';
+import { syncMediaAsset, type MediaState } from '@/lib/media-jobs';
 
 export const metadata = { title: 'Campaign' };
 // Campaign generation calls an AI model and can take up to ~a minute.
@@ -46,12 +51,9 @@ export default async function CampaignDetailPage({ params }: Props) {
   if (!campaign) notFound();
   const orgId = campaign.organization_id as string;
 
-  const [{ data: assets }, { data: audience }, { data: destination }, { data: wallet }] = await Promise.all([
-    supabase
-      .from('campaign_assets')
-      .select('id,type,title,body,channel,status,created_at')
-      .eq('campaign_id', id)
-      .order('created_at', { ascending: true }),
+  const assetSelect = 'id,type,title,body,channel,status,created_at,media_url,thumbnail_url,metadata';
+  const [{ data: assetsInitial }, { data: audience }, { data: destination }, { data: wallet }] = await Promise.all([
+    supabase.from('campaign_assets').select(assetSelect).eq('campaign_id', id).order('created_at', { ascending: true }),
     campaign.audience_id
       ? supabase.from('audiences').select('name').eq('id', campaign.audience_id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -61,15 +63,63 @@ export default async function CampaignDetailPage({ params }: Props) {
     supabase.from('credit_wallets').select('balance,lifetime_used').eq('organization_id', orgId).maybeSingle(),
   ]);
 
+  // Media sync on view: poll providers for any asset still processing and
+  // finalize (charge + preview) whatever has finished. Best-effort — a
+  // provider hiccup never breaks the page.
+  let assets = assetsInitial;
+  const processing = (assetsInitial ?? []).filter(
+    (asset) => (asset.metadata as { media?: MediaState })?.media?.state === 'processing',
+  );
+  if (processing.length) {
+    try {
+      const admin = createAdminClient();
+      for (const asset of processing.slice(0, 4)) {
+        await syncMediaAsset(admin, {
+          id: asset.id as string,
+          organization_id: orgId,
+          campaign_id: id,
+          type: asset.type as string,
+          title: asset.title as string | null,
+          media_url: asset.media_url as string | null,
+          thumbnail_url: asset.thumbnail_url as string | null,
+          metadata: (asset.metadata ?? {}) as Record<string, unknown>,
+        });
+      }
+      const { data: refreshed } = await supabase
+        .from('campaign_assets')
+        .select(assetSelect)
+        .eq('campaign_id', id)
+        .order('created_at', { ascending: true });
+      if (refreshed) assets = refreshed;
+    } catch (error) {
+      console.error('campaign media sync failed:', error);
+    }
+  }
+
   const brief = (campaign.brief ?? {}) as Brief;
-  const assetViews: AssetView[] = (assets ?? []).map((asset) => ({
-    id: asset.id as string,
-    type: asset.type as string,
-    title: asset.title as string | null,
-    body: asset.body as string | null,
-    channel: asset.channel as string | null,
-    status: asset.status as string,
-  }));
+  const mediaOptions: MediaOptions = {
+    imageCost: estimateGenerationCredits('media_image'),
+    videoCost: estimateGenerationCredits('media_video'),
+    imageConfigured: higgsfieldConfigured(),
+    videoConfigured: heygenConfigured(),
+    balance: (wallet?.balance as number | undefined) ?? 0,
+  };
+  const assetViews: AssetView[] = (assets ?? []).map((asset) => {
+    const media = (asset.metadata as { media?: MediaState })?.media;
+    return {
+      id: asset.id as string,
+      type: asset.type as string,
+      title: asset.title as string | null,
+      body: asset.body as string | null,
+      channel: asset.channel as string | null,
+      status: asset.status as string,
+      mediaUrl: asset.media_url as string | null,
+      thumbnailUrl: asset.thumbnail_url as string | null,
+      mediaState: media?.state,
+      mediaError: media?.error,
+      mediaCost: media?.cost,
+    };
+  });
   const needsReview = assetViews.filter((asset) => asset.status === 'ready');
   const approved = assetViews.filter((asset) => asset.status === 'approved');
   const otherAssets = assetViews.filter((asset) => !['ready', 'approved'].includes(asset.status));
@@ -231,7 +281,7 @@ export default async function CampaignDetailPage({ params }: Props) {
           <div className="panel-body">
             <div style={{ display: 'grid', gap: 14 }}>
               {needsReview.map((asset) => (
-                <AssetCard key={asset.id} asset={asset} />
+                <AssetCard key={asset.id} asset={asset} mediaOptions={mediaOptions} />
               ))}
             </div>
           </div>
@@ -252,7 +302,7 @@ export default async function CampaignDetailPage({ params }: Props) {
           <div className="panel-body">
             <div style={{ display: 'grid', gap: 14 }}>
               {approved.map((asset) => (
-                <AssetCard key={asset.id} asset={asset} />
+                <AssetCard key={asset.id} asset={asset} mediaOptions={mediaOptions} />
               ))}
             </div>
           </div>
@@ -269,7 +319,7 @@ export default async function CampaignDetailPage({ params }: Props) {
           <div className="panel-body">
             <div style={{ display: 'grid', gap: 14 }}>
               {otherAssets.map((asset) => (
-                <AssetCard key={asset.id} asset={asset} />
+                <AssetCard key={asset.id} asset={asset} mediaOptions={mediaOptions} />
               ))}
             </div>
           </div>

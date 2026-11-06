@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon, type IconName } from '../icon';
 import { createCampaign, deleteAsset, generateCampaign, setAssetStatus } from '@/app/campaigns/actions';
+import { generateAssetMedia, refreshAssetMedia } from '@/app/campaigns/media-actions';
 
 const channelOptions = ['YouTube', 'Instagram', 'TikTok', 'LinkedIn', 'Facebook', 'Email'];
 const budgetOptions = [
@@ -160,9 +161,22 @@ export type AssetView = {
   body: string | null;
   channel: string | null;
   status: string;
+  mediaUrl?: string | null;
+  thumbnailUrl?: string | null;
+  mediaState?: 'processing' | 'ready' | 'failed';
+  mediaError?: string;
+  mediaCost?: number;
 };
 
-export function AssetCard({ asset }: { asset: AssetView }) {
+export type MediaOptions = {
+  imageCost: number;
+  videoCost: number;
+  imageConfigured: boolean;
+  videoConfigured: boolean;
+  balance: number;
+};
+
+export function AssetCard({ asset, mediaOptions }: { asset: AssetView; mediaOptions?: MediaOptions }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -207,6 +221,64 @@ export function AssetCard({ asset }: { asset: AssetView }) {
         </div>
       ) : (
         <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.65, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{body}</div>
+      )}
+
+      {(asset.type === 'image' || asset.type === 'script') && mediaOptions && (
+        <div style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+          {asset.mediaState === 'ready' && asset.mediaUrl ? (
+            asset.type === 'image' ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={asset.mediaUrl} alt={asset.title ?? 'Generated image'} style={{ width: '100%', borderRadius: 12, display: 'block' }} />
+            ) : (
+              <video
+                src={asset.mediaUrl}
+                poster={asset.thumbnailUrl ?? undefined}
+                controls
+                preload="metadata"
+                style={{ width: '100%', borderRadius: 12, display: 'block', background: '#000' }}
+              />
+            )
+          ) : asset.mediaState === 'processing' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span className="pill pill-live">
+                <span className="dot" /> Generating {asset.type === 'image' ? 'image' : 'video'}…
+              </span>
+              <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+                {asset.type === 'image' ? 'Usually under a minute.' : 'Avatar videos take a few minutes.'} Your {asset.mediaCost ?? ''} credits are charged only when it finishes.
+              </span>
+              <button type="button" className="btn btn-sm" disabled={busy} onClick={() => act(() => refreshAssetMedia(asset.id))}>
+                Refresh status
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={
+                  busy ||
+                  (asset.type === 'image' ? !mediaOptions.imageConfigured : !mediaOptions.videoConfigured) ||
+                  mediaOptions.balance < (asset.type === 'image' ? mediaOptions.imageCost : mediaOptions.videoCost)
+                }
+                onClick={() => act(() => generateAssetMedia(asset.id))}
+              >
+                <Icon name={asset.type === 'image' ? 'image' : 'video'} />
+                Generate {asset.type === 'image' ? 'image' : 'avatar video'} · {asset.type === 'image' ? mediaOptions.imageCost : mediaOptions.videoCost} credits
+              </button>
+              {(asset.type === 'image' ? !mediaOptions.imageConfigured : !mediaOptions.videoConfigured) ? (
+                <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>Media studio opens soon — provider connection in setup.</span>
+              ) : mediaOptions.balance < (asset.type === 'image' ? mediaOptions.imageCost : mediaOptions.videoCost) ? (
+                <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+                  Needs {asset.type === 'image' ? mediaOptions.imageCost : mediaOptions.videoCost} credits — balance is {mediaOptions.balance}. <a href="/credits">Top up</a>
+                </span>
+              ) : asset.mediaState === 'failed' ? (
+                <span style={{ fontSize: 12.5, color: 'var(--magenta, #f43f5e)' }}>Last attempt failed{asset.mediaError ? `: ${asset.mediaError}` : ''} — nothing was charged.</span>
+              ) : (
+                <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>Charged only on success — failures cost nothing.</span>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>

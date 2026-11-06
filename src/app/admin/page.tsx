@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
 import { getAiSpendSummary } from '@/lib/ai-ledger';
+import { heygenConfigured, heygenPing } from '@/lib/heygen';
+import { higgsfieldConfigured, higgsfieldPing } from '@/lib/higgsfield';
 import { AI_WORKLOADS, capUsdFor, cycleLabel } from '@/lib/ai-config';
 import { AppShell } from '@/components/app/app-shell';
 import { adminNav } from '@/components/app/admin-nav';
@@ -153,12 +155,25 @@ export default async function AdminPage() {
     };
   });
 
+  const heygenOk: boolean | null = !heygenConfigured() ? null : await heygenPing();
+  const higgsfieldOk: boolean | null = !higgsfieldConfigured() ? null : await higgsfieldPing();
+
   const health: HealthItem[] = [
     { name: 'Supabase', detail: 'Auth · Postgres · Storage', status: membersResult.error ? 'Unreachable' : 'Operational', ok: !membersResult.error },
     healthBrevo.ok === null ? { ...healthBrevo, detail: 'Login codes · Campaign mail' } : healthBrevo,
     healthOpenRouter,
-    { name: 'HeyGen', detail: 'Avatar video jobs', status: process.env.HEYGEN_API_KEY ? 'Key configured' : 'Not configured — media phase', ok: null },
-    { name: 'Higgsfield', detail: 'Generative media', status: process.env.HIGGSFIELD_API_KEY ? 'Key configured' : 'Not configured — media phase', ok: null },
+    {
+      name: 'HeyGen',
+      detail: 'Avatar video jobs',
+      status: !heygenConfigured() ? 'Not configured' : heygenOk ? 'Operational' : 'Key present — API unreachable',
+      ok: heygenOk,
+    },
+    {
+      name: 'Higgsfield',
+      detail: 'Generative media',
+      status: !higgsfieldConfigured() ? 'Not configured' : higgsfieldOk ? 'Operational' : 'Key present — API unreachable',
+      ok: higgsfieldOk,
+    },
   ];
   const degraded = health.filter((item) => item.ok === false).length;
 
