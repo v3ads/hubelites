@@ -1,23 +1,65 @@
-// Higgsfield API adapter — Soul V2 text-to-image (docs checked 2026-11-06:
-// docs.higgsfield.ai/docs/models/soul-2/generate). Auth is a key PAIR:
-// hf-api-key (key id) + hf-secret headers, billed to the API USD balance.
-// Submit: POST /higgsfield-ai/soul/v2/standard → request handle with a
-// status_url to poll until status=completed. Only successful generations
-// are charged by the provider.
+// Higgsfield API adapter — Soul V2 text-to-image.
+// Higgsfield runs two credential generations in the wild (checked live
+// 2026-11-06 against the vendor docs and Ayman's console):
+//  - current console: ONE api key, sent as `Authorization: Bearer <key>`;
+//  - legacy: a key-id + secret pair, `Authorization: Key <id>:<secret>`
+//    (the hf-api-key / hf-secret headers are also accepted there).
+// The adapter resolves whichever shape the configured credential answers
+// with, against a free authenticated endpoint, and caches the winner.
 
 const BASE = 'https://api.higgsfield.ai';
 
 export function higgsfieldConfigured(): boolean {
-  return Boolean(process.env.HIGGSFIELD_API_KEY_ID && process.env.HIGGSFIELD_API_SECRET);
+  return Boolean(
+    process.env.HIGGSFIELD_API_KEY ||
+      (process.env.HIGGSFIELD_API_KEY_ID && process.env.HIGGSFIELD_API_SECRET),
+  );
 }
 
-function headers() {
-  return {
-    'hf-api-key': process.env.HIGGSFIELD_API_KEY_ID ?? '',
-    'hf-secret': process.env.HIGGSFIELD_API_SECRET ?? '',
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-  };
+type HeaderSet = Record<string, string>;
+
+function authCandidates(): HeaderSet[] {
+  const candidates: HeaderSet[] = [];
+  if (process.env.HIGGSFIELD_API_KEY) {
+    candidates.push({ Authorization: `Bearer ${process.env.HIGGSFIELD_API_KEY}` });
+  }
+  if (process.env.HIGGSFIELD_API_KEY_ID && process.env.HIGGSFIELD_API_SECRET) {
+    candidates.push({
+      Authorization: `Key ${process.env.HIGGSFIELD_API_KEY_ID}:${process.env.HIGGSFIELD_API_SECRET}`,
+    });
+    candidates.push({
+      'hf-api-key': process.env.HIGGSFIELD_API_KEY_ID,
+      'hf-secret': process.env.HIGGSFIELD_API_SECRET,
+    });
+  }
+  return candidates;
+}
+
+let verifiedAuth: HeaderSet | null | undefined;
+
+/** First candidate the free styles endpoint accepts; null when none verify. */
+async function resolveVerifiedAuth(): Promise<HeaderSet | null> {
+  if (verifiedAuth !== undefined) return verifiedAuth;
+  for (const candidate of authCandidates()) {
+    if (await verifyAuth(candidate)) {
+      verifiedAuth = candidate;
+      return candidate;
+    }
+  }
+  verifiedAuth = null;
+  return null;
+}
+
+async function authHeaders(): Promise<HeaderSet> {
+  const verified = await resolveVerifiedAuth();
+  if (verified) return verified;
+  // Styles endpoint unverified (it may have moved) — still attempt the
+  // first configured shape so the submit call can surface the real error.
+  return authCandidates()[0] ?? {};
+}
+
+async function headers(): Promise<HeaderSet> {
+  return { ...(await authHeaders()), 'Content-Type': 'application/json', Accept: 'application/json' };
 }
 
 type Json = Record<string, unknown>;
@@ -53,7 +95,7 @@ function firstImageUrl(payload: unknown): string | null {
 export async function submitSoulImage(input: { prompt: string }): Promise<{ requestId: string; statusUrl: string }> {
   const response = await fetch(`${BASE}/higgsfield-ai/soul/v2/standard`, {
     method: 'POST',
-    headers: headers(),
+    headers: await headers(),
     body: JSON.stringify({
       prompt: input.prompt,
       aspect_ratio: '3:4',
@@ -85,7 +127,7 @@ export type SoulImageStatus = {
 };
 
 export async function pollSoulImage(statusUrl: string): Promise<SoulImageStatus> {
-  const response = await fetch(statusUrl, { headers: headers() });
+  const response = await fetch(statusUrl, { headers: await headers() });
   const payload = (await response.json().catch(() => ({}))) as Json;
   if (!response.ok) {
     throw new Error(`Higgsfield status check failed (${response.status}).`);
@@ -101,12 +143,19 @@ export async function pollSoulImage(statusUrl: string): Promise<SoulImageStatus>
   };
 }
 
-/** Lightweight key check for the admin health panel: the Soul styles list is authenticated and free. */
-export async function higgsfieldPing(): Promise<boolean> {
+async function verifyAuth(auth: HeaderSet): Promise<boolean> {
   try {
-    const response = await fetch(`${BASE}/v1/text2image/soul-styles/v2`, { headers: headers() });
+    const response = await fetch(`${BASE}/v1/text2image/soul-styles/v2`, {
+      headers: { ...auth, Accept: 'application/json' },
+    });
     return response.ok;
   } catch {
     return false;
   }
+}
+
+/** Health = the configured credential answers a free authenticated call. */
+export async function higgsfieldPing(): Promise<boolean> {
+  if (!higgsfieldConfigured()) return false;
+  return (await resolveVerifiedAuth()) !== null;
 }
