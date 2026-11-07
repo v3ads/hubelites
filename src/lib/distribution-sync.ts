@@ -35,9 +35,24 @@ function mapRemoteStatus(post: HubRipplePost): { status: string; publishedUrls: 
     if (target.post_url) publishedUrls[target.platform] = target.post_url;
   }
   const firstError = post.targets.find((t) => t.error)?.error ?? null;
+  // Derive from the TARGETS when they are all terminal: HubRipple's
+  // post-level status can lag its own targets (proven live 2026-11-07 —
+  // the post row stayed "partial" after the retried YouTube target
+  // succeeded, while all three targets were 'sent' with URLs).
+  const targets = post.targets;
+  if (targets.length > 0 && targets.every((t) => t.status === 'sent' && t.post_url)) {
+    return { status: 'published', publishedUrls, error: null };
+  }
+  if (targets.length > 0 && targets.every((t) => t.status === 'failed')) {
+    return { status: 'failed', publishedUrls, error: firstError ?? 'Publishing failed in HubRipple.' };
+  }
+  const anyTerminal = targets.some((t) => t.status === 'sent' || t.status === 'failed');
+  const allTerminal = targets.length > 0 && targets.every((t) => t.status === 'sent' || t.status === 'failed');
+  if (allTerminal) return { status: 'partial', publishedUrls, error: firstError };
   if (post.status === 'published') return { status: 'published', publishedUrls, error: null };
   if (post.status === 'partial') return { status: 'partial', publishedUrls, error: firstError };
   if (post.status === 'failed') return { status: 'failed', publishedUrls, error: firstError ?? 'Publishing failed in HubRipple.' };
+  if (anyTerminal) return { status: 'partial', publishedUrls, error: firstError };
   return { status: 'sent', publishedUrls, error: null };
 }
 
@@ -86,7 +101,7 @@ export async function syncPublications(organizationId: string, campaignId?: stri
     .from('publications')
     .select('id, organization_id, asset_id, platforms, caption, scheduled_at, status, external_post_id')
     .eq('organization_id', organizationId)
-    .in('status', ['queued', 'sent'])
+    .in('status', ['queued', 'sent', 'partial'])
     .order('created_at', { ascending: true })
     .limit(MAX_PER_SYNC);
   if (campaignId) query = query.eq('campaign_id', campaignId);
@@ -99,10 +114,10 @@ export async function syncPublications(organizationId: string, campaignId?: stri
         const due = !publication.scheduled_at || new Date(publication.scheduled_at).getTime() <= Date.now();
         if (!due) continue;
         await pushPublication(admin, connection, publication, false);
-      } else if (publication.status === 'sent' && publication.external_post_id) {
+      } else if ((publication.status === 'sent' || publication.status === 'partial') && publication.external_post_id) {
         const post = await getHubRipplePost(connection.apiKey, publication.external_post_id);
         const mapped = mapRemoteStatus(post);
-        if (mapped.status !== 'sent') {
+        if (mapped.status !== publication.status) {
           await admin
             .from('publications')
             .update({
