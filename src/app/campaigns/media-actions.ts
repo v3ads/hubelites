@@ -91,6 +91,16 @@ export async function generateAssetMedia(assetId: string): Promise<ActionResult>
             avatar_id: created.avatarId,
             voice_id: created.voiceId,
             pairing: created.pairing,
+            // Census of the chosen look's shape evidence (round 2): the
+            // probed preview dimensions + classified shape + tier, so a
+            // single generation shows what the catalog actually offered.
+            avatar_source: {
+              probed_width: created.source.probedWidth,
+              probed_height: created.source.probedHeight,
+              source_shape: created.source.sourceShape,
+              tier: created.source.tier,
+              basis: created.source.basis,
+            },
             spoken_script: script,
           },
           response: { provider_job_id: created.videoId },

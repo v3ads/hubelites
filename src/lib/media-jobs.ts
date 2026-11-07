@@ -8,6 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchVideoDimensions, getAvatarVideo } from '@/lib/heygen';
 import { pollSoulImage } from '@/lib/higgsfield';
 import { isPortraitShort } from '@/lib/mp4';
+import { detectPaddingBands, type RowStat } from '@/lib/frame-check';
 
 export type MediaState = {
   state: 'processing' | 'ready' | 'failed';
@@ -124,6 +125,68 @@ async function setAssetMedia(
     .eq('id', asset.id);
 }
 
+type SharpPipeline = {
+  resize: (options: { width: number }) => SharpPipeline;
+  grayscale: () => SharpPipeline;
+  raw: () => {
+    toBuffer: (options: { resolveWithObject: true }) => Promise<{
+      data: Buffer;
+      info: { width: number; height: number; channels: number };
+    }>;
+  };
+};
+type SharpFactory = (input: Buffer) => SharpPipeline;
+
+/**
+ * Content check on the render's thumbnail still (HeyGen exposes one on
+ * the video detail — in practice a WebP frame grab despite the .jpeg
+ * file name). Decoding uses sharp, which is present in the dependency
+ * tree as Next's optional dependency; it is imported dynamically and
+ * ANY failure (fetch, decode, sharp unavailable) returns 'unknown' —
+ * the checker degrading must never fail or block a video on its own.
+ * Only a positive 'padded' verdict from detectPaddingBands (pure,
+ * unit-tested in frame-check.ts) fails the job.
+ */
+async function checkThumbnailPadding(thumbnailUrl: string): Promise<'padded' | 'full' | 'unknown'> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    let buffer: Buffer;
+    try {
+      const response = await fetch(thumbnailUrl, { signal: controller.signal });
+      if (!response.ok) return 'unknown';
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length > 3 * 1024 * 1024) return 'unknown';
+      buffer = Buffer.from(bytes);
+    } finally {
+      clearTimeout(timer);
+    }
+    const sharpModule = (await import('sharp').catch(() => null)) as { default?: SharpFactory } | null;
+    const sharpFactory = sharpModule?.default;
+    if (!sharpFactory) return 'unknown';
+    const { data, info } = await sharpFactory(buffer)
+      .resize({ width: 72 })
+      .grayscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const rows: RowStat[] = [];
+    for (let y = 0; y < info.height; y++) {
+      let sum = 0;
+      let squareSum = 0;
+      for (let x = 0; x < info.width; x++) {
+        const value = data[(y * info.width + x) * info.channels];
+        sum += value;
+        squareSum += value * value;
+      }
+      const mean = sum / info.width;
+      rows.push({ mean, stdev: Math.sqrt(Math.max(0, squareSum / info.width - mean * mean)) });
+    }
+    return detectPaddingBands(rows).verdict;
+  } catch {
+    return 'unknown';
+  }
+}
+
 /** Poll the provider for one processing asset and finalize it. Safe to call repeatedly. */
 export async function syncMediaAsset(
   admin: SupabaseClient,
@@ -136,12 +199,17 @@ export async function syncMediaAsset(
     if (media.provider === 'heygen' && media.provider_job_id) {
       const video = await getAvatarVideo(media.provider_job_id);
       if (video.status === 'completed' && video.videoUrl) {
-        // Format integrity gate (2026-11-06 audit): a completed render is
-        // NOT a success until its shape is confirmed portrait — the first
-        // test video came back as a landscape scene padded into the 9:16
-        // canvas and was charged as a success. Dimensions come from the
+        // Format integrity gate, two layers (2026-11-06 audit + round 2):
+        // (1) File dimensions — a completed render is NOT a success until
+        // its shape is confirmed portrait. Dimensions come from the
         // HeyGen video detail, falling back to probing the MP4 itself.
         // Unconfirmed counts as failed: unused, uncharged, retryable.
+        // (2) Picture content — dimensions alone proved insufficient: the
+        // 2026-11-07 proof render WAS 1080×1920 yet letterboxed, its
+        // picture padded into the middle third. The render's thumbnail
+        // still is checked for flat padding bands; 'padded' fails the
+        // job pre-charge, while an uncheckable thumbnail ('unknown')
+        // leaves layer (1) as the verdict rather than blocking the video.
         const dims =
           video.width && video.height
             ? { width: video.width, height: video.height }
@@ -150,6 +218,14 @@ export async function syncMediaAsset(
           const reason = dims
             ? `The finished video came back ${dims.width}×${dims.height} — not the portrait shape a Short needs — so it was not used and nothing was charged.`
             : 'The finished video could not be confirmed as portrait-shaped, so it was not used and nothing was charged.';
+          await setAssetMedia(admin, asset, { ...media, state: 'failed', error: reason });
+          await failJob(admin, media.job_id, reason);
+          return 'failed';
+        }
+        const padding = video.thumbnailUrl ? await checkThumbnailPadding(video.thumbnailUrl) : 'unknown';
+        if (padding === 'padded') {
+          const reason =
+            'The finished video came back with empty bands above and below the picture instead of a full-frame portrait, so it was not used and nothing was charged.';
           await setAssetMedia(admin, asset, { ...media, state: 'failed', error: reason });
           await failJob(admin, media.job_id, reason);
           return 'failed';

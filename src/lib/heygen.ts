@@ -11,24 +11,34 @@
 // Avatar + voice are chosen as a PAIR, never independently (2026-11-06
 // audit: the first test video paired an arbitrary avatar with an
 // arbitrary English voice and the result did not match). Selection is
-// tiered (Route A, 2026-11-07 — pure logic in avatar-selection.ts):
-//   Tier 1: portrait-capable looks — portrait-declared looks, plus
-//     Avatar IV / photo-avatar looks (they render to the requested
-//     dimensions instead of carrying a fixed landscape scene);
-//   Tier 2: looks declaring no orientation at all — one attempt is safe
-//     because media-jobs.ts verifies the rendered shape before charging;
-//   Tier 3: every look declares landscape → stop before any spend.
+// tiered on the look source's MEASURED shape (Route A round 2,
+// 2026-11-07 — pure logic in avatar-selection.ts): every look's
+// preview image is probed for its real dimensions below, because
+// neither declared orientation nor the Avatar IV engine guarantees a
+// full-frame portrait — HeyGen animates the source's own framing and
+// pads the rest (the failed proof render measured 1080×1920 with the
+// picture in the middle third only).
+//   Tier 1: preview image measured portrait;
+//   Tier 2: declared-portrait signals (orientation metadata, photo
+//     avatar) with unmeasured shape;
+//   Tier 3: no signal at all;
+//   measured/declared landscape or square: never eligible, and if that
+//     is the whole catalog, selection stops before any spend.
 // Within a tier: a curated pair below, then the look's OWN default
 // voice (HeyGen pairs them), then a gender-matched English voice.
 
 import { parseMp4Dimensions, type Mp4Dimensions } from '@/lib/mp4';
+import { parseImageDimensions } from '@/lib/image-size';
 import {
   normalizeLook,
   normalizeVoice,
   preferredEngine,
   selectAvatarVoicePair,
+  withProbedDims,
   type AvatarLook,
   type AvatarVoice,
+  type SelectionTier,
+  type ShapeBasis,
 } from '@/lib/avatar-selection';
 
 const BASE = 'https://api.heygen.com';
@@ -69,10 +79,68 @@ export const CURATED_AVATAR_VOICE_PAIRS: Array<{ avatarId: string; voiceId: stri
   // each look's own default voice first, which is HeyGen's own pairing.
 ];
 
-let cachedPair: { look: AvatarLook; voiceId: string; pairing: string } | null = null;
+let cachedPair: { look: AvatarLook; voiceId: string; pairing: string; tier: SelectionTier; basis: ShapeBasis } | null = null;
 let cachedVoices: AvatarVoice[] | null = null;
+let cachedLooks: AvatarLook[] | null = null;
+
+// ---------------------------------------------------------------------------
+// Preview-image probing: measure each look's source shape once per
+// catalog fill. A probe downloads at most PROBE_MAX_BYTES (headers are
+// parsed incrementally, so it usually stops after the first chunks),
+// gives up after ~3s, and NEVER throws — a failed or absent probe just
+// leaves the look's shape 'unknown' and selection falls back to its
+// declared signals. Results are cached per URL for the process, so a
+// catalog re-fill does not re-probe.
+// ---------------------------------------------------------------------------
+
+const PROBE_TIMEOUT_MS = 3000;
+const PROBE_MAX_BYTES = 512 * 1024;
+const PROBE_CONCURRENCY = 8;
+const probedDimsByUrl = new Map<string, Mp4Dimensions | null>();
+
+async function probeImageDimensions(url: string): Promise<Mp4Dimensions | null> {
+  const cached = probedDimsByUrl.get(url);
+  if (cached !== undefined) return cached;
+  let dims: Mp4Dimensions | null = null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (response.ok && response.body) {
+        const reader = response.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let total = 0;
+        while (total < PROBE_MAX_BYTES) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          total += value.length;
+          const merged = new Uint8Array(total);
+          let at = 0;
+          for (const chunk of chunks) {
+            merged.set(chunk, at);
+            at += chunk.length;
+          }
+          dims = parseImageDimensions(merged);
+          if (dims) {
+            await reader.cancel().catch(() => undefined);
+            break;
+          }
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    dims = null;
+  }
+  probedDimsByUrl.set(url, dims);
+  return dims;
+}
 
 async function fetchLooks(): Promise<AvatarLook[]> {
+  if (cachedLooks) return cachedLooks;
   // HeyGen caps this endpoint's page size at 50 (docs: limit 1–50).
   // Asking for 100 is rejected with "Input should be less than or equal
   // to 50" before any render starts — the regression that broke the
@@ -80,9 +148,22 @@ async function fetchLooks(): Promise<AvatarLook[]> {
   const data = await heygenFetch('/v3/avatars/looks?ownership=public&limit=50');
   const raw = (data.looks ?? data.items ?? data) as unknown;
   const looks = (Array.isArray(raw) ? raw : []) as Array<Record<string, unknown>>;
-  return looks
+  const normalized = looks
     .map((look) => normalizeLook(look))
     .filter((look): look is AvatarLook => look !== null);
+
+  const enriched: AvatarLook[] = new Array(normalized.length);
+  for (let i = 0; i < normalized.length; i += PROBE_CONCURRENCY) {
+    const batch = normalized.slice(i, i + PROBE_CONCURRENCY);
+    await Promise.all(
+      batch.map(async (look, j) => {
+        const dims = look.previewUrl ? await probeImageDimensions(look.previewUrl) : null;
+        enriched[i + j] = withProbedDims(look, dims);
+      }),
+    );
+  }
+  cachedLooks = enriched;
+  return cachedLooks;
 }
 
 async function fetchVoices(): Promise<AvatarVoice[]> {
@@ -103,7 +184,13 @@ async function fetchVoices(): Promise<AvatarVoice[]> {
  * wrapper only fetches the catalogs — voices lazily, only when the
  * selection falls through to the gender-matched rule.
  */
-async function pickAvatarVoicePair(): Promise<{ look: AvatarLook; voiceId: string; pairing: string }> {
+async function pickAvatarVoicePair(): Promise<{
+  look: AvatarLook;
+  voiceId: string;
+  pairing: string;
+  tier: SelectionTier;
+  basis: ShapeBasis;
+}> {
   if (cachedPair) return cachedPair;
   const looks = await fetchLooks();
   let selection = selectAvatarVoicePair(looks, null, CURATED_AVATAR_VOICE_PAIRS);
@@ -111,7 +198,13 @@ async function pickAvatarVoicePair(): Promise<{ look: AvatarLook; voiceId: strin
     selection = selectAvatarVoicePair(looks, await fetchVoices(), CURATED_AVATAR_VOICE_PAIRS);
   }
   if (selection.kind !== 'pair') throw new Error('HeyGen returned no voices to render with.');
-  cachedPair = { look: selection.look, voiceId: selection.voiceId, pairing: selection.pairing };
+  cachedPair = {
+    look: selection.look,
+    voiceId: selection.voiceId,
+    pairing: selection.pairing,
+    tier: selection.tier,
+    basis: selection.basis,
+  };
   return cachedPair;
 }
 
@@ -131,8 +224,16 @@ export async function createAvatarVideo(input: { script: string; title: string }
   avatarId: string;
   voiceId: string;
   pairing: string;
+  /** Census of the chosen look's shape evidence, recorded on the job. */
+  source: {
+    probedWidth: number | null;
+    probedHeight: number | null;
+    sourceShape: AvatarLook['sourceShape'];
+    tier: SelectionTier;
+    basis: ShapeBasis;
+  };
 }> {
-  const { look, voiceId, pairing } = await pickAvatarVoicePair();
+  const { look, voiceId, pairing, tier, basis } = await pickAvatarVoicePair();
   const engine = preferredEngine(look);
   const data = await heygenFetch('/v3/videos', {
     method: 'POST',
@@ -149,7 +250,20 @@ export async function createAvatarVideo(input: { script: string; title: string }
   });
   const videoId = String(data.video_id ?? data.id ?? '');
   if (!videoId) throw new Error('HeyGen did not return a video id.');
-  return { videoId, engine, avatarId: look.id, voiceId, pairing };
+  return {
+    videoId,
+    engine,
+    avatarId: look.id,
+    voiceId,
+    pairing,
+    source: {
+      probedWidth: look.probedDims?.width ?? null,
+      probedHeight: look.probedDims?.height ?? null,
+      sourceShape: look.sourceShape,
+      tier,
+      basis,
+    },
+  };
 }
 
 function parseDimension(data: Record<string, unknown>, key: 'width' | 'height'): number | null {
