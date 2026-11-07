@@ -1,11 +1,15 @@
 // Higgsfield API adapter — Soul V2 text-to-image.
-// Higgsfield runs two credential generations in the wild (checked live
-// 2026-11-06 against the vendor docs and Ayman's console):
-//  - current console: ONE api key, sent as `Authorization: Bearer <key>`;
-//  - legacy: a key-id + secret pair, `Authorization: Key <id>:<secret>`
-//    (the hf-api-key / hf-secret headers are also accepted there).
-// The adapter resolves whichever shape the configured credential answers
-// with, against a free authenticated endpoint, and caches the winner.
+// Higgsfield credentials come in several shapes across its console
+// generations (all verified against vendor material on 2026-11-06):
+//  - a key-id + secret pair: `Authorization: Key <id>:<secret>` — the
+//    current documented scheme; the legacy hf-api-key / hf-secret headers
+//    are also accepted;
+//  - the same pair issued as ONE combined "id:secret" string (the Python
+//    client's "single key" form), pasted whole into HIGGSFIELD_API_KEY;
+//  - a plain single key: `Authorization: Bearer <key>` (JS client form).
+// The adapter splits a combined string when it sees one, then resolves
+// whichever header shape a free authenticated endpoint accepts, and
+// caches the winner.
 
 const BASE = 'https://api.higgsfield.ai';
 
@@ -18,19 +22,28 @@ export function higgsfieldConfigured(): boolean {
 
 type HeaderSet = Record<string, string>;
 
+function credentialPair(): { id: string; secret: string } | null {
+  if (process.env.HIGGSFIELD_API_KEY_ID && process.env.HIGGSFIELD_API_SECRET) {
+    return { id: process.env.HIGGSFIELD_API_KEY_ID, secret: process.env.HIGGSFIELD_API_SECRET };
+  }
+  const combined = process.env.HIGGSFIELD_API_KEY ?? '';
+  const colon = combined.indexOf(':');
+  if (colon > 0) {
+    return { id: combined.slice(0, colon), secret: combined.slice(colon + 1) };
+  }
+  return null;
+}
+
 function authCandidates(): HeaderSet[] {
   const candidates: HeaderSet[] = [];
-  if (process.env.HIGGSFIELD_API_KEY) {
-    candidates.push({ Authorization: `Bearer ${process.env.HIGGSFIELD_API_KEY}` });
+  const pair = credentialPair();
+  if (pair) {
+    candidates.push({ Authorization: `Key ${pair.id}:${pair.secret}` });
+    candidates.push({ 'hf-api-key': pair.id, 'hf-secret': pair.secret });
   }
-  if (process.env.HIGGSFIELD_API_KEY_ID && process.env.HIGGSFIELD_API_SECRET) {
-    candidates.push({
-      Authorization: `Key ${process.env.HIGGSFIELD_API_KEY_ID}:${process.env.HIGGSFIELD_API_SECRET}`,
-    });
-    candidates.push({
-      'hf-api-key': process.env.HIGGSFIELD_API_KEY_ID,
-      'hf-secret': process.env.HIGGSFIELD_API_SECRET,
-    });
+  if (process.env.HIGGSFIELD_API_KEY && !process.env.HIGGSFIELD_API_KEY.includes(':')) {
+    candidates.push({ Authorization: `Bearer ${process.env.HIGGSFIELD_API_KEY}` });
+    candidates.push({ Authorization: `Key ${process.env.HIGGSFIELD_API_KEY}` });
   }
   return candidates;
 }
@@ -143,15 +156,20 @@ export async function pollSoulImage(statusUrl: string): Promise<SoulImageStatus>
   };
 }
 
+const VERIFY_PATHS = ['/v1/text2image/soul-styles/v2', '/models/higgsfield/genjutsu/restyle/v1.0/presets'];
+
 async function verifyAuth(auth: HeaderSet): Promise<boolean> {
-  try {
-    const response = await fetch(`${BASE}/v1/text2image/soul-styles/v2`, {
-      headers: { ...auth, Accept: 'application/json' },
-    });
-    return response.ok;
-  } catch {
-    return false;
+  for (const path of VERIFY_PATHS) {
+    try {
+      const response = await fetch(`${BASE}${path}`, {
+        headers: { ...auth, Accept: 'application/json' },
+      });
+      if (response.ok) return true;
+    } catch {
+      // try the next probe
+    }
   }
+  return false;
 }
 
 /** Health = the configured credential answers a free authenticated call. */
