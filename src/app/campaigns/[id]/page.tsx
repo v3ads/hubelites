@@ -104,6 +104,7 @@ export default async function CampaignDetailPage({ params }: Props) {
     imageConfigured: higgsfieldConfigured(),
     videoConfigured: heygenConfigured(),
     balance: (wallet?.balance as number | undefined) ?? 0,
+    unlimited: Boolean(profile?.is_super_admin),
   };
   const assetViews: AssetView[] = (assets ?? []).map((asset) => {
     const media = (asset.metadata as { media?: MediaState })?.media;
