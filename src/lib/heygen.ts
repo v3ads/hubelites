@@ -243,7 +243,14 @@ async function pickAvatarVoicePair(presenterLookId?: string | null): Promise<{
         if (!voices.length) throw new Error('HeyGen returned no voices to render with.');
         const english = voices.filter((voice) => /en[-_]/i.test(voice.locale));
         const pool = english.length ? english : voices;
-        const genderMatch = presenter.gender ? pool.find((voice) => voice.gender === presenter.gender) : undefined;
+        // The presenter's persona is a woman (the vetted creation
+        // prompt defines her), and her look payload carries no gender —
+        // so when she has no default voice, match FEMALE voices rather
+        // than taking the pool's first voice blind: the first unpinned
+        // proof paired her with a male voice exactly that way
+        // (2026-11-07, Ayman caught it by ear).
+        const matchGender = presenter.gender ?? 'female';
+        const genderMatch = pool.find((voice) => voice.gender === matchGender);
         const voice = genderMatch ?? pool[0];
         voiceId = voice.id;
         pairing = `presenter:${genderMatch ? 'gender-matched-voice' : 'first-english-voice'}:${basis}`;
