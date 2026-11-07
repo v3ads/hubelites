@@ -1,5 +1,6 @@
 import { Icon } from '@/components/icon';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { TurnstileField } from '@/components/turnstile';
 import { requestLoginCode, verifyLoginCode } from './actions';
 import { redirect } from 'next/navigation';
 import { PUBLIC_ACCESS_ENABLED } from '@/lib/public-access';
@@ -78,7 +79,9 @@ export default async function LoginPage({ searchParams }: Props) {
             <div className="auth-alert" style={{ marginTop: 20 }}>
               {params.error === 'invalid_code'
                 ? 'Enter the numeric code from your email.'
-                : 'That code was not accepted. Request a fresh code and try again.'}
+                : params.error === 'signup_closed'
+                  ? 'HubElites is invite-only right now — new accounts aren’t being created. If you already have an account, sign in with that email.'
+                  : 'That code was not accepted. Request a fresh code and try again.'}
             </div>
           )}
 
@@ -103,6 +106,9 @@ export default async function LoginPage({ searchParams }: Props) {
                   />
                   <span className="field-hint">The code expires shortly after it is sent.</span>
                 </div>
+                {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+                  <TurnstileField siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} />
+                )}
                 <button className="btn btn-primary btn-lg btn-block" type="submit">
                   Verify &amp; continue
                   <Icon name="arrow" />
@@ -111,6 +117,9 @@ export default async function LoginPage({ searchParams }: Props) {
 
               <form action={requestLoginCode} style={{ marginTop: 12 }}>
                 <input type="hidden" name="email" value={email} />
+                {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+                  <TurnstileField siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} />
+                )}
                 <button className="btn btn-block" type="submit">
                   Send a fresh code
                 </button>
@@ -135,6 +144,9 @@ export default async function LoginPage({ searchParams }: Props) {
                   required
                 />
               </div>
+              {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+                <TurnstileField siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} />
+              )}
               <button className="btn btn-primary btn-lg btn-block" type="submit">
                 Send sign-in code
                 <Icon name="mail" />

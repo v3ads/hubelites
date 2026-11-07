@@ -15,12 +15,21 @@ export async function requestLoginCode(formData: FormData) {
   if (!email) redirect(loginUrl({ error: 'email_required' }));
 
   const supabase = await createClient();
+  const captchaToken = String(formData.get('captcha_token') ?? '').trim() || undefined;
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: true },
+    // Signups are CLOSED (2026-11-06): Supabase Auth has disable_signup=true
+    // after a wave of bot registrations, and the app matches it — OTP codes
+    // are issued to existing accounts only.
+    options: { shouldCreateUser: false, captchaToken },
   });
 
-  if (error) redirect(loginUrl({ error: error.message, email }));
+  if (error) {
+    if (/signup|not allowed|not found/i.test(error.message)) {
+      redirect(loginUrl({ error: 'signup_closed', email }));
+    }
+    redirect(loginUrl({ error: error.message, email }));
+  }
   redirect(loginUrl({ sent: '1', email }));
 }
 
@@ -35,11 +44,13 @@ export async function verifyLoginCode(formData: FormData) {
   }
 
   const supabase = await createClient();
+  const captchaToken = String(formData.get('captcha_token') ?? '').trim() || undefined;
   const { data, error } = await supabase.auth.verifyOtp({
     email,
     token,
     type: 'email',
-  });
+    ...(captchaToken ? { captchaToken } : {}),
+  } as Parameters<typeof supabase.auth.verifyOtp>[0]);
 
   if (error) redirect(loginUrl({ sent: '1', email, error: error.message }));
 
