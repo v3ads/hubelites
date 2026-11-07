@@ -64,6 +64,7 @@ export async function generateAssetMedia(assetId: string): Promise<ActionResult>
     .insert({
       organization_id: asset.organization_id,
       campaign_id: asset.campaign_id,
+      asset_id: asset.id,
       status: 'running',
       credits_reserved: cost,
       request: { kind, asset_id: asset.id, provider },

@@ -49,7 +49,7 @@ async function chargeJob(
 
   // Conditional transition: only the first finalizer (status still running)
   // charges — a replayed sync can never double-charge.
-  const { data: updated } = await admin
+  const { data: updated, error: updateError } = await admin
     .from('generation_jobs')
     .update({
       status: 'succeeded',
@@ -60,6 +60,13 @@ async function chargeJob(
     .eq('id', jobId)
     .eq('status', 'running')
     .select('id');
+  if (updateError) {
+    // Never fail silently here: a schema/RLS surprise must be loud in logs,
+    // because the asset may already show as ready (2026-11-06 lesson: the
+    // missing credits_charged column hid behind an unchecked update).
+    console.error('media charge job update failed:', updateError);
+    return;
+  }
   if (!updated?.length) return;
 
   const cost = job.credits_reserved ?? 0;
