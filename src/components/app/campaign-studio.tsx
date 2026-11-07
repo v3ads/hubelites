@@ -250,7 +250,21 @@ export function AssetCard({ asset, mediaOptions }: { asset: AssetView; mediaOpti
                 poster={asset.thumbnailUrl ?? undefined}
                 controls
                 preload="metadata"
-                style={{ width: '100%', borderRadius: 12, display: 'block', background: '#000' }}
+                // Portrait Shorts stage: a 9:16 video at full card width
+                // renders over two viewports tall, so any single glance
+                // shows a horizontal slice and reads as "cropped" (the
+                // 2026-11-07 proof misread — the files were correctly
+                // framed head-and-shoulders all along, verified by frame
+                // extraction). Constrain to a phone-like stage instead.
+                style={{
+                  width: '100%',
+                  maxWidth: 340,
+                  aspectRatio: '9 / 16',
+                  margin: '0 auto',
+                  borderRadius: 12,
+                  display: 'block',
+                  background: '#000',
+                }}
               />
             )
           ) : asset.mediaState === 'processing' ? (
