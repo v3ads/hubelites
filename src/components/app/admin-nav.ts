@@ -10,6 +10,7 @@ export function adminNav(activeLabel: string): NavGroup[] {
         { label: 'Organizations', icon: 'layers', href: '#' },
         { label: 'Campaigns', icon: 'sparkles', href: '#' },
         { label: 'Media Jobs', icon: 'video', href: '/admin/media-jobs', ...mark('Media Jobs') },
+        { label: 'Presenter', icon: 'video', href: '/admin/presenter', ...mark('Presenter') },
       ],
     },
     {

@@ -285,7 +285,7 @@ export function AssetCard({ asset, mediaOptions }: { asset: AssetView; mediaOpti
                   Needs {asset.type === 'image' ? mediaOptions.imageCost : mediaOptions.videoCost} credits — balance is {mediaOptions.balance}. <a href="/credits">Top up</a>
                 </span>
               ) : asset.mediaState === 'failed' ? (
-                <span style={{ fontSize: 12.5, color: 'var(--magenta, #f43f5e)' }}>Last attempt failed{asset.mediaError ? `: ${asset.mediaError}` : ''} — nothing was charged.</span>
+                <span style={{ fontSize: 12.5, color: 'var(--magenta, #f43f5e)' }}>Last attempt failed{asset.mediaError ? `: ${asset.mediaError}` : ''}{asset.mediaError && /charged/i.test(asset.mediaError) ? '' : ' — nothing was charged.'}</span>
               ) : (
                 <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>Charged only on success — failures cost nothing.</span>
               )}

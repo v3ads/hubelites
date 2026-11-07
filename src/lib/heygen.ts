@@ -145,9 +145,26 @@ async function fetchLooks(): Promise<AvatarLook[]> {
   // Asking for 100 is rejected with "Input should be less than or equal
   // to 50" before any render starts — the regression that broke the
   // 2026-11-06 proof run. Do not raise this.
-  const data = await heygenFetch('/v3/avatars/looks?ownership=public&limit=50');
-  const raw = (data.looks ?? data.items ?? data) as unknown;
-  const looks = (Array.isArray(raw) ? raw : []) as Array<Record<string, unknown>>;
+  // Both ownership lists are fetched: the public catalog AND the
+  // account's own avatars (2026-11-07: the platform presenter is an
+  // account-owned prompt avatar — invisible to the public list). A
+  // failed private fetch degrades to the public catalog alone.
+  const [publicData, privateData] = await Promise.all([
+    heygenFetch('/v3/avatars/looks?ownership=public&limit=50'),
+    heygenFetch('/v3/avatars/looks?ownership=private&limit=50').catch(() => null),
+  ]);
+  const rawLooks = (data: Record<string, unknown> | null): Array<Record<string, unknown>> => {
+    if (!data) return [];
+    const raw = (data.looks ?? data.items ?? data) as unknown;
+    return (Array.isArray(raw) ? raw : []) as Array<Record<string, unknown>>;
+  };
+  const seen = new Set<string>();
+  const looks = [...rawLooks(publicData), ...rawLooks(privateData)].filter((look) => {
+    const id = String(look.id ?? look.look_id ?? '');
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
   const normalized = looks
     .map((look) => normalizeLook(look))
     .filter((look): look is AvatarLook => look !== null);
@@ -313,4 +330,53 @@ export async function heygenPing(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Presenter creation (2026-11-07): the public catalog holds NO
+// measured-portrait avatar (final census), so the platform presenter is
+// an account-owned avatar generated from a text prompt — HeyGen's
+// "prompt" type depicts no real person, needs no consent step, and
+// accepts aspect_ratio 9:16 so the source itself is natively portrait.
+// Creation is asynchronous: poll getAvatarLook until status completes.
+// ---------------------------------------------------------------------------
+
+export type AvatarLookDetail = {
+  id: string;
+  status: string;
+  previewImageUrl: string | null;
+  defaultVoiceId: string | null;
+  gender: string | null;
+  width: number | null;
+  height: number | null;
+  engines: string[];
+};
+
+function parseLookDetail(item: Record<string, unknown>): AvatarLookDetail {
+  return {
+    id: String(item.id ?? item.look_id ?? ''),
+    status: String(item.status ?? 'processing'),
+    previewImageUrl: typeof item.preview_image_url === 'string' ? item.preview_image_url : null,
+    defaultVoiceId: typeof item.default_voice_id === 'string' ? item.default_voice_id : null,
+    gender: typeof item.gender === 'string' ? item.gender : null,
+    width: typeof item.image_width === 'number' ? item.image_width : null,
+    height: typeof item.image_height === 'number' ? item.image_height : null,
+    engines: Array.isArray(item.supported_api_engines) ? (item.supported_api_engines as string[]) : [],
+  };
+}
+
+export async function createPromptAvatar(input: { name: string; prompt: string }): Promise<AvatarLookDetail> {
+  const data = await heygenFetch('/v3/avatars', {
+    method: 'POST',
+    body: JSON.stringify({ type: 'prompt', name: input.name, prompt: input.prompt, aspect_ratio: '9:16' }),
+  });
+  const item = (data.avatar_item ?? data) as Record<string, unknown>;
+  const detail = parseLookDetail(item);
+  if (!detail.id) throw new Error('HeyGen did not return an avatar id for the new presenter.');
+  return detail;
+}
+
+export async function getAvatarLook(lookId: string): Promise<AvatarLookDetail> {
+  const data = await heygenFetch(`/v3/avatars/looks/${lookId}`);
+  return parseLookDetail((data.avatar_item ?? data) as Record<string, unknown>);
 }
