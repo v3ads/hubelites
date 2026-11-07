@@ -30,10 +30,12 @@
 import { parseMp4Dimensions, type Mp4Dimensions } from '@/lib/mp4';
 import { parseImageDimensions } from '@/lib/image-size';
 import {
+  classifyLook,
   normalizeLook,
   normalizeVoice,
   preferredEngine,
   selectAvatarVoicePair,
+  shapeBasis,
   withProbedDims,
   type AvatarLook,
   type AvatarVoice,
@@ -79,7 +81,14 @@ export const CURATED_AVATAR_VOICE_PAIRS: Array<{ avatarId: string; voiceId: stri
   // each look's own default voice first, which is HeyGen's own pairing.
 ];
 
-let cachedPair: { look: AvatarLook; voiceId: string; pairing: string; tier: SelectionTier; basis: ShapeBasis } | null = null;
+let cachedPair: {
+  look: AvatarLook;
+  voiceId: string;
+  pairing: string;
+  tier: SelectionTier;
+  basis: ShapeBasis;
+  presenterKey: string;
+} | null = null;
 let cachedVoices: AvatarVoice[] | null = null;
 let cachedLooks: AvatarLook[] | null = null;
 
@@ -200,16 +209,53 @@ async function fetchVoices(): Promise<AvatarVoice[]> {
  * pairing rules live in avatar-selection.ts (pure, unit-tested); this
  * wrapper only fetches the catalogs — voices lazily, only when the
  * selection falls through to the gender-matched rule.
+ *
+ * PRESENTER PIN (2026-11-07): when a platform presenter look id is
+ * configured (media_provider_catalog config, set on /admin/presenter),
+ * it wins over every automatic rule. The first unpinned proof proved
+ * why: an unvetted PUBLIC look that probed portrait (720×1280) with
+ * its own default voice out-ranked the platform's own presenter in
+ * tier 1 and rendered a face-cropped close-up that passed the padding
+ * gate. Automatic selection is a fallback for "no presenter yet", not
+ * a peer of the pinned presenter. The presenter's voice is its own
+ * default voice when it has one, else the gender-matched rule.
  */
-async function pickAvatarVoicePair(): Promise<{
+async function pickAvatarVoicePair(presenterLookId?: string | null): Promise<{
   look: AvatarLook;
   voiceId: string;
   pairing: string;
   tier: SelectionTier;
   basis: ShapeBasis;
 }> {
-  if (cachedPair) return cachedPair;
+  const presenterKey = presenterLookId ?? '';
+  if (cachedPair && cachedPair.presenterKey === presenterKey) return cachedPair;
   const looks = await fetchLooks();
+
+  if (presenterLookId) {
+    const presenter = looks.find((look) => look.id === presenterLookId);
+    const tier = presenter ? classifyLook(presenter) : 0;
+    if (presenter && tier !== 0) {
+      const basis = shapeBasis(presenter, tier);
+      let voiceId = presenter.defaultVoiceId;
+      let pairing = `presenter:look-default-voice:${basis}`;
+      if (!voiceId) {
+        const voices = await fetchVoices();
+        if (!voices.length) throw new Error('HeyGen returned no voices to render with.');
+        const english = voices.filter((voice) => /en[-_]/i.test(voice.locale));
+        const pool = english.length ? english : voices;
+        const genderMatch = presenter.gender ? pool.find((voice) => voice.gender === presenter.gender) : undefined;
+        const voice = genderMatch ?? pool[0];
+        voiceId = voice.id;
+        pairing = `presenter:${genderMatch ? 'gender-matched-voice' : 'first-english-voice'}:${basis}`;
+      }
+      cachedPair = { look: presenter, voiceId, pairing, tier, basis, presenterKey };
+      return cachedPair;
+    }
+    // A configured presenter that is missing or measured non-portrait
+    // falls through to automatic selection (which stops pre-spend when
+    // nothing eligible exists) rather than rendering the wrong shape.
+  }
+
   let selection = selectAvatarVoicePair(looks, null, CURATED_AVATAR_VOICE_PAIRS);
   if (selection.kind === 'needs-voices') {
     selection = selectAvatarVoicePair(looks, await fetchVoices(), CURATED_AVATAR_VOICE_PAIRS);
@@ -221,6 +267,7 @@ async function pickAvatarVoicePair(): Promise<{
     pairing: selection.pairing,
     tier: selection.tier,
     basis: selection.basis,
+    presenterKey,
   };
   return cachedPair;
 }
@@ -235,7 +282,7 @@ export type HeygenVideo = {
   failureMessage: string | null;
 };
 
-export async function createAvatarVideo(input: { script: string; title: string }): Promise<{
+export async function createAvatarVideo(input: { script: string; title: string; presenterLookId?: string | null }): Promise<{
   videoId: string;
   engine: string;
   avatarId: string;
@@ -250,7 +297,7 @@ export async function createAvatarVideo(input: { script: string; title: string }
     basis: ShapeBasis;
   };
 }> {
-  const { look, voiceId, pairing, tier, basis } = await pickAvatarVoicePair();
+  const { look, voiceId, pairing, tier, basis } = await pickAvatarVoicePair(input.presenterLookId);
   const engine = preferredEngine(look);
   const data = await heygenFetch('/v3/videos', {
     method: 'POST',

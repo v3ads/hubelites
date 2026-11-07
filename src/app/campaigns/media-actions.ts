@@ -90,7 +90,24 @@ export async function generateAssetMedia(assetId: string): Promise<ActionResult>
       // is recorded on the job and previewed in the AssetCard.
       const script = toSpokenScript(asset.body ?? '');
       if (script.length < 20) throw new Error('The script is too short to render as a video.');
-      const created = await createAvatarVideo({ script, title: asset.title ?? 'HubElites campaign video' });
+      // The platform presenter (set on /admin/presenter) is read through
+      // the service-role client: the catalog is super-admin-only at the
+      // RLS level, but every member's render must use the same presenter.
+      const admin = createAdminClient();
+      const { data: catalogRow } = await admin
+        .from('media_provider_catalog')
+        .select('config')
+        .eq('provider', 'heygen')
+        .maybeSingle();
+      const presenterLookId =
+        typeof (catalogRow?.config as Record<string, unknown> | null)?.presenter_look_id === 'string'
+          ? ((catalogRow?.config as Record<string, unknown>).presenter_look_id as string)
+          : null;
+      const created = await createAvatarVideo({
+        script,
+        title: asset.title ?? 'HubElites campaign video',
+        presenterLookId,
+      });
       media = { state: 'processing', job_id: job.id, provider, provider_job_id: created.videoId, cost };
       await supabase
         .from('generation_jobs')
