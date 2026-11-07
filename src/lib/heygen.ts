@@ -10,17 +10,26 @@
 //
 // Avatar + voice are chosen as a PAIR, never independently (2026-11-06
 // audit: the first test video paired an arbitrary avatar with an
-// arbitrary English voice and the result did not match). Preference:
-//   1. a curated pair below whose avatar is live and portrait-native;
-//   2. a portrait-native look's OWN default voice (HeyGen pairs them);
-//   3. a gender-matched English voice for the look's persona.
-// Only portrait-native looks are eligible for 9:16 Shorts: a landscape
-// look gets padded into the portrait canvas by HeyGen (the letterbox
-// the audit caught), so when the catalog says which looks are portrait
-// we never pick a landscape one. The rendered output is verified again
-// in media-jobs.ts before the job can succeed or charge.
+// arbitrary English voice and the result did not match). Selection is
+// tiered (Route A, 2026-11-07 — pure logic in avatar-selection.ts):
+//   Tier 1: portrait-capable looks — portrait-declared looks, plus
+//     Avatar IV / photo-avatar looks (they render to the requested
+//     dimensions instead of carrying a fixed landscape scene);
+//   Tier 2: looks declaring no orientation at all — one attempt is safe
+//     because media-jobs.ts verifies the rendered shape before charging;
+//   Tier 3: every look declares landscape → stop before any spend.
+// Within a tier: a curated pair below, then the look's OWN default
+// voice (HeyGen pairs them), then a gender-matched English voice.
 
 import { parseMp4Dimensions, type Mp4Dimensions } from '@/lib/mp4';
+import {
+  normalizeLook,
+  normalizeVoice,
+  preferredEngine,
+  selectAvatarVoicePair,
+  type AvatarLook,
+  type AvatarVoice,
+} from '@/lib/avatar-selection';
 
 const BASE = 'https://api.heygen.com';
 
@@ -53,45 +62,17 @@ async function heygenFetch(path: string, init?: RequestInit) {
  * Add an entry when a specific presenter is vetted by hand: the avatar
  * id is a look id from GET /v3/avatars/looks and the voice id its
  * matched voice from GET /v3/models/audio/voices. Entries whose avatar
- * is not live (or not portrait-native) are ignored.
+ * is not live (or not in the selected portrait tier) are ignored.
  */
 export const CURATED_AVATAR_VOICE_PAIRS: Array<{ avatarId: string; voiceId: string; note: string }> = [
   // No hand-vetted presenter pinned yet — automatic pairing below uses
   // each look's own default voice first, which is HeyGen's own pairing.
 ];
 
-type Look = {
-  id: string;
-  engines: string[];
-  orientation: 'portrait' | 'landscape' | null;
-  defaultVoiceId: string | null;
-  gender: string | null;
-};
+let cachedPair: { look: AvatarLook; voiceId: string; pairing: string } | null = null;
+let cachedVoices: AvatarVoice[] | null = null;
 
-type Voice = { id: string; locale: string; gender: string | null };
-
-function parseOrientation(look: Record<string, unknown>): Look['orientation'] {
-  const declared = String(look.preferred_orientation ?? look.orientation ?? '').toLowerCase();
-  if (declared.includes('portrait') || declared.includes('vertical')) return 'portrait';
-  if (declared.includes('landscape') || declared.includes('horizontal')) return 'landscape';
-  const width = typeof look.width === 'number' ? look.width : null;
-  const height = typeof look.height === 'number' ? look.height : null;
-  if (width && height) return height > width ? 'portrait' : 'landscape';
-  return null;
-}
-
-function parseDefaultVoiceId(look: Record<string, unknown>): string | null {
-  const direct = look.default_voice_id ?? look.voice_id;
-  if (typeof direct === 'string' && direct) return direct;
-  const nested = look.default_voice as { id?: unknown; voice_id?: unknown } | undefined;
-  const nestedId = nested?.id ?? nested?.voice_id;
-  return typeof nestedId === 'string' && nestedId ? nestedId : null;
-}
-
-let cachedPair: { look: Look; voiceId: string; pairing: string } | null = null;
-let cachedVoices: Voice[] | null = null;
-
-async function fetchLooks(): Promise<Look[]> {
+async function fetchLooks(): Promise<AvatarLook[]> {
   // HeyGen caps this endpoint's page size at 50 (docs: limit 1–50).
   // Asking for 100 is rejected with "Input should be less than or equal
   // to 50" before any render starts — the regression that broke the
@@ -100,86 +81,37 @@ async function fetchLooks(): Promise<Look[]> {
   const raw = (data.looks ?? data.items ?? data) as unknown;
   const looks = (Array.isArray(raw) ? raw : []) as Array<Record<string, unknown>>;
   return looks
-    .map((look) => ({
-      id: String(look.id ?? look.look_id ?? ''),
-      engines: Array.isArray(look.supported_api_engines) ? (look.supported_api_engines as string[]) : [],
-      orientation: parseOrientation(look),
-      defaultVoiceId: parseDefaultVoiceId(look),
-      gender: typeof look.gender === 'string' ? look.gender.toLowerCase() : null,
-    }))
-    .filter((look) => look.id);
+    .map((look) => normalizeLook(look))
+    .filter((look): look is AvatarLook => look !== null);
 }
 
-async function fetchVoices(): Promise<Voice[]> {
+async function fetchVoices(): Promise<AvatarVoice[]> {
   if (cachedVoices) return cachedVoices;
   const data = await heygenFetch('/v3/models/audio/voices?limit=100');
   const raw = (data.voices ?? data.items ?? data) as unknown;
   const voices = (Array.isArray(raw) ? raw : []) as Array<Record<string, unknown>>;
   cachedVoices = voices
-    .map((voice) => ({
-      id: String(voice.voice_id ?? voice.id ?? ''),
-      locale: String(voice.locale ?? voice.language ?? ''),
-      gender: typeof voice.gender === 'string' ? voice.gender.toLowerCase() : null,
-    }))
-    .filter((voice) => voice.id)
+    .map((voice) => normalizeVoice(voice))
+    .filter((voice): voice is AvatarVoice => voice !== null)
     .sort((a, b) => a.id.localeCompare(b.id));
   return cachedVoices;
 }
 
 /**
- * Choose the avatar + voice pair for a portrait Short. Deterministic:
- * catalog order never changes the result (candidates are sorted).
+ * Choose the avatar + voice pair for a portrait Short. The tier and
+ * pairing rules live in avatar-selection.ts (pure, unit-tested); this
+ * wrapper only fetches the catalogs — voices lazily, only when the
+ * selection falls through to the gender-matched rule.
  */
-async function pickAvatarVoicePair(): Promise<{ look: Look; voiceId: string; pairing: string }> {
+async function pickAvatarVoicePair(): Promise<{ look: AvatarLook; voiceId: string; pairing: string }> {
   if (cachedPair) return cachedPair;
   const looks = await fetchLooks();
-  if (!looks.length) throw new Error('HeyGen returned no public avatars to render with.');
-
-  // Engine preference first (Avatar III pipeline), stable by id.
-  const byPreference = [...looks].sort((a, b) => {
-    const aScore = a.engines.includes('avatar_iii') ? 0 : 1;
-    const bScore = b.engines.includes('avatar_iii') ? 0 : 1;
-    return aScore - bScore || a.id.localeCompare(b.id);
-  });
-
-  // Portrait integrity: when the catalog declares orientation, only
-  // portrait-native looks are eligible — a landscape look is letterboxed
-  // into the 9:16 canvas. If every declared look is landscape, fail
-  // BEFORE any spend rather than render another padded video.
-  const declared = byPreference.filter((look) => look.orientation !== null);
-  let eligible = byPreference;
-  if (declared.length) {
-    eligible = byPreference.filter((look) => look.orientation === 'portrait');
-    if (!eligible.length) {
-      throw new Error('HeyGen has no portrait-shaped avatar available right now, so the video was not started. Nothing was charged.');
-    }
+  let selection = selectAvatarVoicePair(looks, null, CURATED_AVATAR_VOICE_PAIRS);
+  if (selection.kind === 'needs-voices') {
+    selection = selectAvatarVoicePair(looks, await fetchVoices(), CURATED_AVATAR_VOICE_PAIRS);
   }
-
-  // 1. A pinned curated pair whose avatar is live and eligible.
-  for (const pair of CURATED_AVATAR_VOICE_PAIRS) {
-    const look = eligible.find((candidate) => candidate.id === pair.avatarId);
-    if (look) {
-      cachedPair = { look, voiceId: pair.voiceId, pairing: `curated: ${pair.note}` };
-      return cachedPair;
-    }
-  }
-
-  // 2. The look's own default voice — HeyGen's own pairing for it.
-  const withOwnVoice = eligible.find((look) => look.defaultVoiceId);
-  if (withOwnVoice) {
-    cachedPair = { look: withOwnVoice, voiceId: withOwnVoice.defaultVoiceId as string, pairing: 'avatar default voice' };
-    return cachedPair;
-  }
-
-  // 3. Gender-matched English voice for the look's persona.
-  const look = eligible[0];
-  const voices = await fetchVoices();
-  if (!voices.length) throw new Error('HeyGen returned no voices to render with.');
-  const english = voices.filter((voice) => /en[-_]/i.test(voice.locale));
-  const pool = english.length ? english : voices;
-  const genderMatch = look.gender ? pool.find((voice) => voice.gender === look.gender) : undefined;
-  const voice = genderMatch ?? pool[0];
-  cachedPair = { look, voiceId: voice.id, pairing: genderMatch ? 'gender-matched voice' : 'first English voice' };
+  if (selection.kind !== 'pair') throw new Error('HeyGen returned no voices to render with.');
+  cachedPair = { look: selection.look, voiceId: selection.voiceId, pairing: selection.pairing };
   return cachedPair;
 }
 
@@ -201,7 +133,7 @@ export async function createAvatarVideo(input: { script: string; title: string }
   pairing: string;
 }> {
   const { look, voiceId, pairing } = await pickAvatarVoicePair();
-  const engine = look.engines.includes('avatar_iii') ? 'avatar_iii' : 'avatar_iv';
+  const engine = preferredEngine(look);
   const data = await heygenFetch('/v3/videos', {
     method: 'POST',
     body: JSON.stringify({
