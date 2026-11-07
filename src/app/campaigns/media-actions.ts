@@ -33,17 +33,29 @@ export async function generateAssetMedia(assetId: string): Promise<ActionResult>
     return { ok: false, error: 'Media generation is not switched on yet — the provider connection is still being set up.' };
   }
 
+  // Super admins generate without credits (Ayman's directive 2026-11-07:
+  // the admin account is unlimited and never pays). The job still records
+  // the nominal rate and the provider cost; it just reserves/charges 0,
+  // flagged admin_unlimited so the Media Jobs ledger stays truthful.
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('is_super_admin')
+    .eq('id', user.id)
+    .maybeSingle();
+  const adminUnlimited = profile?.is_super_admin === true;
+
   const existing = (asset.metadata as { media?: MediaState })?.media;
   if (existing?.state === 'processing') return { ok: false, error: 'This asset is already generating — give it a moment, then refresh.' };
   if (existing?.state === 'ready' && asset.media_url) return { ok: false, error: 'This asset already has media. Discard it and regenerate the campaign copy if you want a different take.' };
 
   const cost = estimateGenerationCredits(kind);
+  const billableCost = adminUnlimited ? 0 : cost;
   const { data: wallet } = await supabase
     .from('credit_wallets')
     .select('balance')
     .eq('organization_id', asset.organization_id)
     .maybeSingle();
-  if ((wallet?.balance ?? 0) < cost) {
+  if ((wallet?.balance ?? 0) < billableCost) {
     return {
       ok: false,
       error: `This ${kind === 'media_image' ? 'image' : 'video'} costs ${cost} credits and your balance is ${wallet?.balance ?? 0}. Add a pack on the Credits page first — nothing was charged.`,
@@ -59,8 +71,8 @@ export async function generateAssetMedia(assetId: string): Promise<ActionResult>
       campaign_id: asset.campaign_id,
       asset_id: asset.id,
       status: 'running',
-      credits_reserved: cost,
-      request: { kind, asset_id: asset.id, provider },
+      credits_reserved: billableCost,
+      request: { kind, asset_id: asset.id, provider, ...(adminUnlimited ? { admin_unlimited: true, nominal_credits: cost } : {}) },
       started_at: new Date().toISOString(),
     })
     .select('id')
@@ -87,6 +99,7 @@ export async function generateAssetMedia(assetId: string): Promise<ActionResult>
             kind,
             asset_id: asset.id,
             provider,
+            ...(adminUnlimited ? { admin_unlimited: true, nominal_credits: cost } : {}),
             engine: created.engine,
             avatar_id: created.avatarId,
             voice_id: created.voiceId,

@@ -92,6 +92,7 @@ export default async function CreditsPage({
           </p>
         </div>
         <span className="pill">{balance.toLocaleString()} credits available</span>
+        {profile?.is_super_admin ? <span className="pill">Super Admin — generation is unlimited, nothing is charged</span> : null}
       </div>
 
       {checkout === 'success' && (
