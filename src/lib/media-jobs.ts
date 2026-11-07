@@ -5,8 +5,9 @@
 // session (the actions and page sync do exactly that).
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { getAvatarVideo } from '@/lib/heygen';
+import { fetchVideoDimensions, getAvatarVideo } from '@/lib/heygen';
 import { pollSoulImage } from '@/lib/higgsfield';
+import { isPortraitShort } from '@/lib/mp4';
 
 export type MediaState = {
   state: 'processing' | 'ready' | 'failed';
@@ -135,6 +136,24 @@ export async function syncMediaAsset(
     if (media.provider === 'heygen' && media.provider_job_id) {
       const video = await getAvatarVideo(media.provider_job_id);
       if (video.status === 'completed' && video.videoUrl) {
+        // Format integrity gate (2026-11-06 audit): a completed render is
+        // NOT a success until its shape is confirmed portrait — the first
+        // test video came back as a landscape scene padded into the 9:16
+        // canvas and was charged as a success. Dimensions come from the
+        // HeyGen video detail, falling back to probing the MP4 itself.
+        // Unconfirmed counts as failed: unused, uncharged, retryable.
+        const dims =
+          video.width && video.height
+            ? { width: video.width, height: video.height }
+            : await fetchVideoDimensions(video.videoUrl);
+        if (!dims || !isPortraitShort(dims)) {
+          const reason = dims
+            ? `The finished video came back ${dims.width}×${dims.height} — not the portrait shape a Short needs — so it was not used and nothing was charged.`
+            : 'The finished video could not be confirmed as portrait-shaped, so it was not used and nothing was charged.';
+          await setAssetMedia(admin, asset, { ...media, state: 'failed', error: reason });
+          await failJob(admin, media.job_id, reason);
+          return 'failed';
+        }
         // Internal cost tracking at the Avatar III worst case, $0.99/min.
         const costMicros = video.durationSeconds ? Math.round(video.durationSeconds * 16_500) : null;
         await setAssetMedia(

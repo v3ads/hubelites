@@ -166,6 +166,8 @@ export type AssetView = {
   mediaState?: 'processing' | 'ready' | 'failed';
   mediaError?: string;
   mediaCost?: number;
+  /** Exact sanitized text the avatar will speak (script assets only). */
+  spokenPreview?: string;
 };
 
 export type MediaOptions = {
@@ -225,6 +227,17 @@ export function AssetCard({ asset, mediaOptions }: { asset: AssetView; mediaOpti
 
       {(asset.type === 'image' || asset.type === 'script') && mediaOptions && (
         <div style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+          {asset.type === 'script' && asset.spokenPreview && asset.mediaState !== 'ready' && asset.mediaState !== 'processing' && (
+            <div style={{ marginBottom: 12, background: 'var(--surface-2, rgba(127,127,127,0.08))', borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                What the avatar will say
+              </div>
+              <p style={{ fontSize: 13.5, lineHeight: 1.6, color: 'var(--text-2)', margin: '6px 0 0' }}>{asset.spokenPreview}</p>
+              <p style={{ fontSize: 12, color: 'var(--text-4)', margin: '6px 0 0' }}>
+                Section labels, stage directions and links are stripped automatically — this is the exact text sent to the avatar.
+              </p>
+            </div>
+          )}
           {asset.mediaState === 'ready' && asset.mediaUrl ? (
             asset.type === 'image' ? (
               // eslint-disable-next-line @next/next/no-img-element

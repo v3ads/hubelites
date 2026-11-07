@@ -9,6 +9,7 @@ import { estimateGenerationCredits } from '@/lib/credits';
 import { heygenConfigured } from '@/lib/heygen';
 import { higgsfieldConfigured } from '@/lib/higgsfield';
 import { syncMediaAsset, type MediaState } from '@/lib/media-jobs';
+import { toSpokenScript } from '@/lib/spoken-script';
 
 export const metadata = { title: 'Campaign' };
 // Campaign generation calls an AI model and can take up to ~a minute.
@@ -118,6 +119,9 @@ export default async function CampaignDetailPage({ params }: Props) {
       mediaState: media?.state,
       mediaError: media?.error,
       mediaCost: media?.cost,
+      // The exact words the avatar will say (labels/directions stripped)
+      // — computed with the same sanitizer the generate action uses.
+      spokenPreview: asset.type === 'script' ? toSpokenScript((asset.body as string | null) ?? '') : undefined,
     };
   });
   const needsReview = assetViews.filter((asset) => asset.status === 'ready');

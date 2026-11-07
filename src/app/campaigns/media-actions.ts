@@ -7,16 +7,9 @@ import { estimateGenerationCredits } from '@/lib/credits';
 import { createAvatarVideo, heygenConfigured } from '@/lib/heygen';
 import { higgsfieldConfigured, submitSoulImage } from '@/lib/higgsfield';
 import { syncMediaAsset, type MediaState } from '@/lib/media-jobs';
+import { toSpokenScript } from '@/lib/spoken-script';
 
 type ActionResult = { ok: boolean; error?: string };
-
-function spokenScript(body: string): string {
-  const clean = body.replace(/\s+/g, ' ').trim();
-  if (clean.length <= 900) return clean;
-  const cut = clean.slice(0, 900);
-  const lastSentence = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
-  return (lastSentence > 300 ? cut.slice(0, lastSentence + 1) : cut).trim();
-}
 
 export async function generateAssetMedia(assetId: string): Promise<ActionResult> {
   const supabase = await createClient();
@@ -79,13 +72,29 @@ export async function generateAssetMedia(assetId: string): Promise<ActionResult>
   try {
     let media: MediaState;
     if (provider === 'heygen') {
-      const script = spokenScript(asset.body ?? '');
+      // ONLY the sanitized spoken text reaches HeyGen — the stored script
+      // is a labeled production document (Hook:/CTA:/B-roll:/directions)
+      // and the avatar would read every label aloud. The exact text sent
+      // is recorded on the job and previewed in the AssetCard.
+      const script = toSpokenScript(asset.body ?? '');
       if (script.length < 20) throw new Error('The script is too short to render as a video.');
       const created = await createAvatarVideo({ script, title: asset.title ?? 'HubElites campaign video' });
       media = { state: 'processing', job_id: job.id, provider, provider_job_id: created.videoId, cost };
       await supabase
         .from('generation_jobs')
-        .update({ request: { kind, asset_id: asset.id, provider, engine: created.engine }, response: { provider_job_id: created.videoId } })
+        .update({
+          request: {
+            kind,
+            asset_id: asset.id,
+            provider,
+            engine: created.engine,
+            avatar_id: created.avatarId,
+            voice_id: created.voiceId,
+            pairing: created.pairing,
+            spoken_script: script,
+          },
+          response: { provider_job_id: created.videoId },
+        })
         .eq('id', job.id);
     } else {
       const prompt = (asset.body ?? '').trim().slice(0, 1500);
