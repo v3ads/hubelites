@@ -98,12 +98,56 @@ function stripMarkdownInline(text: string): string {
     .replace(/`([^`]+)`/g, '$1');
 }
 
+const BARE_DOMAIN = String.raw`[\w-]+(?:\.[\w-]+)*\.(?:com|io|ai|net|org|co|app|dev|me|tv)(?:\/[^\s)]*)?`;
+
 /** Drop raw URLs (and a dangling "at/on/via" right before one). */
 function dropUrls(text: string): string {
   return text
-    .replace(/\b(?:at|on|via)\s+(?:https?:\/\/|www\.)[^\s)]+/gi, '')
+    .replace(new RegExp(String.raw`\b(?:at|on|via)\s+(?:(?:https?:\/\/|www\.)[^\s)]+|${BARE_DOMAIN})`, 'gi'), '')
     .replace(/(?:https?:\/\/|www\.)[^\s)]+/gi, '')
-    .replace(/\b[\w-]+(?:\.[\w-]+)*\.(?:com|io|ai|net|org|co|app|dev|me|tv)(?:\/[^\s)]*)?/gi, '');
+    .replace(new RegExp(String.raw`\b${BARE_DOMAIN}`, 'gi'), '');
+}
+
+// Words that can be left dangling at the end of a sentence when the URL
+// they pointed at is removed ("Register at hubactually.com." loses the
+// domain and would otherwise leave the avatar saying "Register at.").
+const DANGLING_END_WORDS = new Set(['at', 'on', 'via', 'to', 'from', 'with', 'here', 'using', 'through']);
+
+/**
+ * Clean up sentence fragments orphaned by URL removal. Only ever called
+ * on a line a URL was actually removed from, so ordinary sentences that
+ * happen to end in a preposition are never touched. A sentence that
+ * trails off into a removed URL loses its dangling end words; if
+ * nothing but a word or so remains ("Register at." → "Register"), the
+ * whole fragment is dropped back to the previous complete sentence.
+ */
+function dropOrphanedFragments(text: string): string {
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const kept: string[] = [];
+  sentences.forEach((sentence, index) => {
+    const trimmed = sentence.trim();
+    if (!trimmed) return;
+    const punct = trimmed.match(/[.!?]+$/)?.[0] ?? '.';
+    const words = trimmed
+      .replace(/[.!?]+$/, '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    let end = words.length;
+    while (end > 0 && DANGLING_END_WORDS.has(words[end - 1].toLowerCase())) end--;
+    if (end < words.length) {
+      // The sentence ran into a removed URL: keep it only if a real
+      // sentence survives losing the dangling words.
+      if (end >= 2) kept.push(words.slice(0, end).join(' ') + punct);
+      return;
+    }
+    // No dangling word, but the URL's sentence may have been reduced to
+    // a lone stub word ("Register at https://…" loses "at <url>" whole).
+    // Drop a one-word final sentence when anything else precedes it.
+    if (words.length <= 1 && index === sentences.length - 1 && kept.length > 0) return;
+    kept.push(trimmed);
+  });
+  return kept.join(' ');
 }
 
 function dropBracketed(text: string): string {
@@ -149,7 +193,11 @@ function spokenFragmentsForLine(rawLine: string): string[] {
   }
 
   line = dropBracketed(line);
+  const beforeUrls = line;
   line = dropUrls(line);
+  // If a URL came out of this line, its sentence may be left dangling
+  // ("Register at.") — clean orphaned fragments before they reach TTS.
+  if (line !== beforeUrls) line = dropOrphanedFragments(line);
   line = dropEmoji(line);
   line = stripMarkdownInline(line);
   return [line];

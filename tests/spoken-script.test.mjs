@@ -49,6 +49,60 @@ test('raw URLs are dropped, never spelled out', () => {
   assert.ok(out.includes('Start today and see how it works.'));
 });
 
+test('a URL at the very end leaves no dangling preposition fragment', () => {
+  const out = toSpokenScript('Build your hub. Register at example.com.');
+  assert.equal(out, 'Build your hub.');
+  assert.ok(!out.includes('Register'));
+});
+
+test('a scheme URL at the very end leaves no stub sentence either', () => {
+  const out = toSpokenScript('Build your hub. Register at https://example.com/join');
+  assert.equal(out, 'Build your hub.');
+});
+
+test('a URL mid-sentence is removed with its preposition, sentence survives', () => {
+  const out = toSpokenScript('Register at example.com to save your seat, then check your inbox.');
+  assert.equal(out, 'Register to save your seat, then check your inbox.');
+  const out2 = toSpokenScript('Watch the walkthrough at https://example.com/demo and tell us what you think.');
+  assert.equal(out2, 'Watch the walkthrough and tell us what you think.');
+});
+
+test('a dangling sentence with a real remainder keeps the remainder', () => {
+  // "with" is not in the at/on/via prevention list, so this exercises
+  // the dangling-word strip itself: the domain goes, "with" must not
+  // be left trailing, and the real sentence survives.
+  const out = toSpokenScript('You can sign up with example.com.');
+  assert.equal(out, 'You can sign up.');
+});
+
+test('a dangling fragment with no real remainder is dropped entirely', () => {
+  const out = toSpokenScript('Everything is ready. Download from example.com.');
+  assert.equal(out, 'Everything is ready.');
+});
+
+test('the exact Course walkthrough script ends cleanly on "Build your hub."', () => {
+  const body = [
+    '[HOOK, on camera] Let me show you one student going through one hub.',
+    '',
+    '[BEAT 1] They land on your branded destination. They buy your course right there.',
+    '',
+    '[BEAT 2] They start learning. Then they join your community, in the same place, under your brand.',
+    '',
+    '[BEAT 3] They need help, so they ask, in the same place. They never had to hunt for a second login.',
+    '',
+    "[BEAT 4] That's a hub. Selling, delivery, participation and service, connected around your customer.",
+    '',
+    '[CTA] Build your hub. Register at hubactually.com.',
+  ].join('\n');
+  const out = toSpokenScript(body);
+  assert.equal(
+    out,
+    "Let me show you one student going through one hub. They land on your branded destination. They buy your course right there. They start learning. Then they join your community, in the same place, under your brand. They need help, so they ask, in the same place. They never had to hunt for a second login. That's a hub. Selling, delivery, participation and service, connected around your customer. Build your hub.",
+  );
+  assert.ok(!out.includes('Register'));
+  assert.ok(!out.includes('hubactually.com'));
+});
+
 test('ordinary sentences pass through preserved verbatim', () => {
   const plain =
     'Tired of juggling multiple platforms for your courses and coaching? When your business is scattered, you are stuck holding it together. One hub changes that.';

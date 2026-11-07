@@ -92,7 +92,11 @@ let cachedPair: { look: Look; voiceId: string; pairing: string } | null = null;
 let cachedVoices: Voice[] | null = null;
 
 async function fetchLooks(): Promise<Look[]> {
-  const data = await heygenFetch('/v3/avatars/looks?ownership=public&limit=100');
+  // HeyGen caps this endpoint's page size at 50 (docs: limit 1–50).
+  // Asking for 100 is rejected with "Input should be less than or equal
+  // to 50" before any render starts — the regression that broke the
+  // 2026-11-06 proof run. Do not raise this.
+  const data = await heygenFetch('/v3/avatars/looks?ownership=public&limit=50');
   const raw = (data.looks ?? data.items ?? data) as unknown;
   const looks = (Array.isArray(raw) ? raw : []) as Array<Record<string, unknown>>;
   return looks
