@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '../icon';
 import { PLATFORMS, platformsForAsset, type PlatformId } from '@/lib/distribution';
-import { cancelPublication, createPublication } from '@/app/campaigns/[id]/distribute-actions';
+import { cancelPublication, createPublication, sendPublicationNow } from '@/app/campaigns/[id]/distribute-actions';
 
 export type DistributableAsset = {
   id: string;
@@ -22,6 +22,8 @@ export type PublicationView = {
   status: string;
   scheduledAt: string | null;
   clicks: number;
+  error: string | null;
+  publishedUrls: Record<string, string>;
 };
 
 const APP_URL = 'https://www.hubelites.com';
@@ -186,10 +188,40 @@ export function DistributionPanel({
                 <div style={{ fontFamily: 'monospace', fontSize: 12.5, marginTop: 2 }}>
                   {APP_URL}/r/{publication.linkSlug}
                 </div>
+                {Object.entries(publication.publishedUrls).length > 0 && (
+                  <div style={{ fontSize: 12.5, marginTop: 2 }}>
+                    {Object.entries(publication.publishedUrls).map(([platform, url]) => (
+                      <span key={platform} style={{ marginRight: 10 }}>
+                        {platform}:{' '}
+                        <a href={url} target="_blank" rel="noreferrer">
+                          view post ↗
+                        </a>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {publication.error && (
+                  <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 2 }}>{publication.error}</div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span className="pill">{publication.clicks} clicks</span>
                 <span className={`pill ${publication.status === 'published' ? 'pill-live' : ''}`}>{publication.status}</span>
+                {publication.status === 'queued' && connected && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={busyId === publication.id}
+                    onClick={async () => {
+                      setBusyId(publication.id);
+                      await sendPublicationNow(campaignId, publication.id);
+                      setBusyId(null);
+                      router.refresh();
+                    }}
+                  >
+                    Send now
+                  </button>
+                )}
                 {publication.status === 'queued' && (
                   <button
                     type="button"

@@ -2,8 +2,11 @@
 
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { composeCaption, isPlatformId } from '@/lib/distribution';
 import { newLinkSlug } from '@/lib/tracked-links';
+import { getHubRippleConnection } from '@/lib/hubripple';
+import { pushPublication } from '@/lib/distribution-sync';
 
 export type PublicationResult = { ok: true; slug?: string } | { ok: false; error: string };
 
@@ -96,6 +99,50 @@ export async function createPublication(input: {
 
   revalidatePath(`/campaigns/${input.campaignId}`);
   return { ok: true, slug };
+}
+
+/**
+ * Send a queued publication to HubRipple right now, ignoring its
+ * schedule. Used by the "Send now" button; the scheduled sync remains
+ * the default path.
+ */
+export async function sendPublicationNow(campaignId: string, publicationId: string): Promise<PublicationResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Your session expired. Sign in again.' };
+
+  const { data: membership } = await supabase
+    .from('organization_members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .limit(1)
+    .maybeSingle();
+  const organizationId = membership?.organization_id as string | undefined;
+  if (!organizationId) return { ok: false, error: 'No workspace found for your account yet.' };
+
+  const connection = await getHubRippleConnection(organizationId);
+  if (!connection) return { ok: false, error: 'Connect HubRipple on the dashboard first — there is no saved workspace key yet.' };
+
+  const admin = createAdminClient();
+  const { data: publication } = await admin
+    .from('publications')
+    .select('id, organization_id, asset_id, platforms, caption, scheduled_at, status, external_post_id')
+    .eq('id', publicationId)
+    .eq('organization_id', organizationId)
+    .eq('status', 'queued')
+    .maybeSingle();
+  if (!publication) return { ok: false, error: 'That publication is no longer queued.' };
+
+  try {
+    await pushPublication(admin, connection, publication, true);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Push to HubRipple failed.' };
+  }
+
+  revalidatePath(`/campaigns/${campaignId}`);
+  return { ok: true };
 }
 
 export async function cancelPublication(campaignId: string, publicationId: string): Promise<PublicationResult> {

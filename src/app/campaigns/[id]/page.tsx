@@ -5,6 +5,7 @@ import { AppShell } from '@/components/app/app-shell';
 import { memberNav } from '@/components/app/member-nav';
 import { AssetCard, GeneratePanel, type AssetView, type MediaOptions } from '@/components/app/campaign-studio';
 import { DistributionPanel, type PublicationView } from '@/components/app/distribute-panel';
+import { syncPublications } from '@/lib/distribution-sync';
 import { Icon } from '@/components/icon';
 import { estimateGenerationCredits } from '@/lib/credits';
 import { heygenConfigured } from '@/lib/heygen';
@@ -130,12 +131,18 @@ export default async function CampaignDetailPage({ params }: Props) {
   const approved = assetViews.filter((asset) => asset.status === 'approved');
   const otherAssets = assetViews.filter((asset) => !['ready', 'approved'].includes(asset.status));
 
-  // Distribution (Phase 5): this campaign's publications + click counts,
-  // and whether HubRipple is connected for the workspace.
+  // Distribution (Phase 5): sync with HubRipple first (push due
+  // publications, pull statuses — best-effort, never breaks the page),
+  // then read this campaign's publications + click counts.
+  try {
+    await syncPublications(orgId, id);
+  } catch (error) {
+    console.error('distribution sync failed:', error);
+  }
   const [{ data: publicationRows }, { data: distributionConnection }] = await Promise.all([
     supabase
       .from('publications')
-      .select('id, asset_id, platforms, link_slug, status, scheduled_at, created_at')
+      .select('id, asset_id, platforms, link_slug, status, scheduled_at, created_at, error, published_urls')
       .eq('campaign_id', id)
       .order('created_at', { ascending: false }),
     supabase
@@ -160,6 +167,8 @@ export default async function CampaignDetailPage({ params }: Props) {
       status: row.status as string,
       scheduledAt: (row.scheduled_at as string | null) ?? null,
       clicks: count ?? 0,
+      error: (row.error as string | null) ?? null,
+      publishedUrls: (row.published_urls as Record<string, string> | null) ?? {},
     });
   }
   const hubRippleConnected = distributionConnection?.status === 'connected';
