@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase-admin';
 import { AppShell } from '@/components/app/app-shell';
 import { memberNav } from '@/components/app/member-nav';
 import { AssetCard, GeneratePanel, type AssetView, type MediaOptions } from '@/components/app/campaign-studio';
+import { DistributionPanel, type PublicationView } from '@/components/app/distribute-panel';
 import { Icon } from '@/components/icon';
 import { estimateGenerationCredits } from '@/lib/credits';
 import { heygenConfigured } from '@/lib/heygen';
@@ -128,6 +129,40 @@ export default async function CampaignDetailPage({ params }: Props) {
   const needsReview = assetViews.filter((asset) => asset.status === 'ready');
   const approved = assetViews.filter((asset) => asset.status === 'approved');
   const otherAssets = assetViews.filter((asset) => !['ready', 'approved'].includes(asset.status));
+
+  // Distribution (Phase 5): this campaign's publications + click counts,
+  // and whether HubRipple is connected for the workspace.
+  const [{ data: publicationRows }, { data: distributionConnection }] = await Promise.all([
+    supabase
+      .from('publications')
+      .select('id, asset_id, platforms, link_slug, status, scheduled_at, created_at')
+      .eq('campaign_id', id)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('distribution_connections')
+      .select('status')
+      .eq('organization_id', orgId)
+      .eq('provider', 'hubripple')
+      .maybeSingle(),
+  ]);
+  const publicationViews: PublicationView[] = [];
+  for (const row of publicationRows ?? []) {
+    const { count } = await supabase
+      .from('link_clicks')
+      .select('id', { count: 'exact', head: true })
+      .eq('publication_id', row.id as string);
+    const asset = assetViews.find((view) => view.id === (row.asset_id as string | null));
+    publicationViews.push({
+      id: row.id as string,
+      assetTitle: asset?.title ?? null,
+      platforms: (row.platforms as string[] | null) ?? [],
+      linkSlug: row.link_slug as string,
+      status: row.status as string,
+      scheduledAt: (row.scheduled_at as string | null) ?? null,
+      clicks: count ?? 0,
+    });
+  }
+  const hubRippleConnected = distributionConnection?.status === 'connected';
 
   const email = user.email ?? '';
   const name = (profile?.display_name as string | undefined) ?? email.split('@')[0] ?? 'Ambassador';
@@ -298,7 +333,7 @@ export default async function CampaignDetailPage({ params }: Props) {
           <div className="panel-head">
             <div>
               <h2>Approved</h2>
-              <p>Locked in. Scheduling and publishing arrive with the Distribution phase.</p>
+              <p>Locked in. Distribute them below — every post carries your tracked Mission 1000 link.</p>
             </div>
             <span className="pill pill-live">
               <span className="dot" /> {approved.length} approved
@@ -310,6 +345,38 @@ export default async function CampaignDetailPage({ params }: Props) {
                 <AssetCard key={asset.id} asset={asset} mediaOptions={mediaOptions} />
               ))}
             </div>
+          </div>
+        </section>
+      )}
+
+      {approved.length > 0 && (
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Distribute</h2>
+              <p>
+                Queue approved assets for publishing through HubRipple. The tracked link is live the moment you
+                queue — clicks are counted whether the post has sent or not.
+              </p>
+            </div>
+            <span className={`pill ${hubRippleConnected ? 'pill-live' : ''}`}>
+              {hubRippleConnected ? 'HubRipple connected' : 'HubRipple not connected'}
+            </span>
+          </div>
+          <div className="panel-body">
+            <DistributionPanel
+              campaignId={id}
+              assets={approved.map((asset) => ({
+                id: asset.id,
+                title: asset.title,
+                type: asset.type,
+                body: asset.body,
+                hasMedia: Boolean(asset.mediaUrl),
+              }))}
+              publications={publicationViews}
+              connected={hubRippleConnected}
+              hasDestination={Boolean(destination?.destination_url)}
+            />
           </div>
         </section>
       )}

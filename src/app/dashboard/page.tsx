@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase-server';
 import { AppShell } from '@/components/app/app-shell';
 import { memberNav } from '@/components/app/member-nav';
 import { DestinationForm } from '@/components/app/destination-form';
+import { HubRippleConnect } from '@/components/app/hubripple-connect';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { Icon } from '@/components/icon';
 
 export const metadata = { title: 'Dashboard' };
@@ -110,6 +112,26 @@ export default async function DashboardPage() {
 
   const brand = brandResult.data;
   const destination = destinationResult.data;
+
+  // Publishing connection (Phase 5): metadata via the member client; the
+  // "key saved" fact via the service role — the key itself never renders.
+  const { data: distributionConnection } = await supabase
+    .from('distribution_connections')
+    .select('id, workspace_label, status')
+    .eq('organization_id', orgId)
+    .eq('provider', 'hubripple')
+    .maybeSingle();
+  let hubRippleKeySaved = false;
+  if (distributionConnection?.id) {
+    const admin = createAdminClient();
+    const { data: secretRow } = await admin
+      .from('distribution_secrets')
+      .select('connection_id')
+      .eq('connection_id', distributionConnection.id)
+      .maybeSingle();
+    hubRippleKeySaved = Boolean(secretRow);
+  }
+  const hubRippleConnected = distributionConnection?.status === 'connected';
   const audiences = audiencesResult.data ?? [];
   const campaigns = campaignsResult.data ?? [];
   const assets = (assetsResult.data ?? []) as AssetRow[];
@@ -394,6 +416,30 @@ export default async function DashboardPage() {
         </div>
         <div className="panel-body">
           <DestinationForm initialUrl={(destination?.destination_url as string | undefined) ?? ''} />
+        </div>
+      </section>
+
+      <section className="panel" id="publishing">
+        <div className="panel-head">
+          <div>
+            <h2>Publishing — HubRipple</h2>
+            <p>
+              Approved campaign assets publish through your own HubRipple workspace. Your social accounts stay
+              connected there; HubElites only hands over the posts you approve, each carrying your tracked link.
+            </p>
+          </div>
+          {hubRippleConnected && hubRippleKeySaved && (
+            <span className="pill pill-live">
+              <span className="dot" /> Connected
+            </span>
+          )}
+        </div>
+        <div className="panel-body">
+          <HubRippleConnect
+            connected={hubRippleConnected}
+            label={(distributionConnection?.workspace_label as string | undefined) ?? ''}
+            keySaved={hubRippleKeySaved}
+          />
         </div>
       </section>
 
