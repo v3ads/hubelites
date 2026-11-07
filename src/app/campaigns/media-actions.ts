@@ -20,7 +20,7 @@ export async function generateAssetMedia(assetId: string): Promise<ActionResult>
 
   const { data: asset } = await supabase
     .from('campaign_assets')
-    .select('id, organization_id, campaign_id, type, title, body, media_url, thumbnail_url, metadata')
+    .select('id, organization_id, campaign_id, type, title, body, media_url, thumbnail_url, metadata, status')
     .eq('id', assetId)
     .maybeSingle();
   if (!asset) return { ok: false, error: 'Asset not found.' };
@@ -46,7 +46,11 @@ export async function generateAssetMedia(assetId: string): Promise<ActionResult>
 
   const existing = (asset.metadata as { media?: MediaState })?.media;
   if (existing?.state === 'processing') return { ok: false, error: 'This asset is already generating — give it a moment, then refresh.' };
-  if (existing?.state === 'ready' && asset.media_url) return { ok: false, error: 'This asset already has media. Discard it and regenerate the campaign copy if you want a different take.' };
+  // Regeneration of a ready asset is allowed (added 2026-11-07 — the
+  // studio previously offered no way to re-take a completed video, which
+  // stranded the pre-fix male-voice render of Proof-Nov 7 Short 1). The
+  // new job replaces the media when it finalizes; an APPROVED asset
+  // returns to review below, because the approval was for the old take.
 
   const cost = estimateGenerationCredits(kind);
   const billableCost = adminUnlimited ? 0 : cost;
@@ -148,7 +152,13 @@ export async function generateAssetMedia(assetId: string): Promise<ActionResult>
     }
     await supabase
       .from('campaign_assets')
-      .update({ metadata: { ...(asset.metadata as object), media }, updated_at: new Date().toISOString() })
+      .update({
+        metadata: { ...(asset.metadata as object), media },
+        // A regenerated take is a NEW artifact: an approved asset goes
+        // back to review so it is re-approved before it can be shared.
+        ...(asset.status === 'approved' ? { status: 'ready' } : {}),
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', asset.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'The provider could not start this generation.';

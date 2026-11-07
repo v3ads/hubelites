@@ -241,7 +241,8 @@ export function AssetCard({ asset, mediaOptions }: { asset: AssetView; mediaOpti
             </div>
           )}
           {asset.mediaState === 'ready' && asset.mediaUrl ? (
-            asset.type === 'image' ? (
+            <>
+              {asset.type === 'image' ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={asset.mediaUrl} alt={asset.title ?? 'Generated image'} style={{ width: '100%', borderRadius: 12, display: 'block' }} />
             ) : (
@@ -266,7 +267,31 @@ export function AssetCard({ asset, mediaOptions }: { asset: AssetView; mediaOpti
                   background: '#000',
                 }}
               />
-            )
+            )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={
+                    busy ||
+                    (asset.type === 'image' ? !mediaOptions.imageConfigured : !mediaOptions.videoConfigured) ||
+                    (!mediaOptions.unlimited &&
+                      mediaOptions.balance < (asset.type === 'image' ? mediaOptions.imageCost : mediaOptions.videoCost))
+                  }
+                  onClick={() => act(() => generateAssetMedia(asset.id))}
+                >
+                  <Icon name={asset.type === 'image' ? 'image' : 'video'} />
+                  Regenerate {asset.type === 'image' ? 'image' : 'avatar video'} · {asset.type === 'image' ? mediaOptions.imageCost : mediaOptions.videoCost} credits
+                </button>
+                {asset.status === 'approved' ? (
+                  <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+                    A new take returns this asset to review — you approve it again before it can be shared.
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>Not the take you wanted? Generate a new one.</span>
+                )}
+              </div>
+            </>
           ) : asset.mediaState === 'processing' ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span className="pill pill-live">
