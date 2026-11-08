@@ -14,7 +14,7 @@
 // destination CTA the engine wrote. The Say 1-2-3 sequence and the rest
 // of the script are never touched — only the closing section changes.
 
-export const INSTAGRAM_VIDEO_CTA = "Comment HUB and I'll send you the invite.";
+export const INSTAGRAM_VIDEO_CTA = "Comment HUB and I'll send you the invite, or see the link in my bio.";
 
 export function isInstagramChannel(channel: string | null | undefined): boolean {
   return (channel ?? '').trim().toLowerCase() === 'instagram';
