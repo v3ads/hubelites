@@ -5,6 +5,9 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
 import { generateCampaignPlan, type CampaignContext } from '@/lib/openrouter';
 import { estimateGenerationCredits } from '@/lib/credits';
+import { summarizeAnalytics } from '@/lib/analytics';
+import { extractLearningSignals } from '@/lib/learnings';
+import { applyClosingCta } from '@/lib/script-cta';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -118,6 +121,43 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
     ((brief.audiences as string[] | undefined)?.[0] ?? 'Coaches');
   const channels = ((brief.channels as string[] | undefined) ?? []).filter(Boolean);
 
+  // Phase 6 Slice C — learning loop: the org's own tracked results become
+  // brief signals for this generation, but only with enough evidence
+  // (extractLearningSignals enforces the floors; silence otherwise).
+  // Failures here must never block generation — results are a bonus input.
+  let learnings: string[] = [];
+  try {
+    const [{ data: orgPublications }, { data: orgCampaigns }, { data: orgAudiences }] = await Promise.all([
+      supabase.from('publications').select('id, campaign_id, asset_id, status, created_at').eq('organization_id', organizationId),
+      supabase.from('campaigns').select('id, title, audience_id').eq('organization_id', organizationId),
+      supabase.from('audiences').select('id, name').eq('organization_id', organizationId),
+    ]);
+    const publicationRows = orgPublications ?? [];
+    const assetIds = [...new Set(publicationRows.map((p) => p.asset_id as string | null).filter(Boolean))] as string[];
+    const [{ data: orgAssets }, { data: orgClicks }] = await Promise.all([
+      assetIds.length
+        ? supabase.from('campaign_assets').select('id, type, title').in('id', assetIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; type: string; title: string | null }> }),
+      publicationRows.length
+        ? supabase
+            .from('link_clicks')
+            .select('publication_id, user_agent, clicked_at')
+            .in('publication_id', publicationRows.map((p) => p.id as string))
+        : Promise.resolve({ data: [] as Array<{ publication_id: string; user_agent: string | null; clicked_at: string }> }),
+    ]);
+    const summary = summarizeAnalytics({
+      clicks: (orgClicks ?? []) as Array<{ publication_id: string; user_agent: string | null; clicked_at: string }>,
+      publications: publicationRows as Array<{ id: string; campaign_id: string; asset_id: string | null; status: string; created_at: string }>,
+      campaigns: (orgCampaigns ?? []) as Array<{ id: string; title: string; audience_id: string | null }>,
+      audiences: (orgAudiences ?? []) as Array<{ id: string; name: string }>,
+      assets: (orgAssets ?? []) as Array<{ id: string; type: string; title: string | null }>,
+      window: 'all',
+    });
+    learnings = extractLearningSignals(summary);
+  } catch {
+    learnings = [];
+  }
+
   const context: CampaignContext = {
     brandName: (brandResult.data?.business_name as string | undefined) ?? 'Your brand',
     personalName: (brandResult.data?.personal_name as string | undefined) ?? null,
@@ -128,6 +168,7 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
     channels: channels.length ? channels : ['YouTube', 'Email'],
     budgetMode: ((campaign.budget_mode as string) ?? 'balanced') as CampaignContext['budgetMode'],
     missionBrain: brainItems,
+    learnings: learnings.length ? learnings : undefined,
   };
 
   // Credit reserve: text campaign generation is estimated before it starts
@@ -194,7 +235,10 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
       organization_id: organizationId,
       type: asset.type,
       title: asset.title,
-      body: asset.body,
+      // Instagram scripts get the exact comment-keyword closing CTA,
+      // enforced deterministically over whatever the model wrote
+      // (2026-11-08 rule — see src/lib/script-cta.ts).
+      body: applyClosingCta(asset.body, asset.type, asset.channel),
       channel: asset.channel,
       status: 'ready',
       metadata: { source: 'campaign_brain', model },
@@ -215,6 +259,10 @@ export async function generateCampaign(campaignId: string): Promise<ActionResult
           calendar: plan.calendar,
           generated_at: new Date().toISOString(),
           model,
+          // Transparency: the campaign page shows exactly which result
+          // signals this generation was briefed with (absent = none met
+          // the evidence floors).
+          ...(learnings.length ? { learnings_used: learnings } : {}),
         },
         updated_at: new Date().toISOString(),
       })

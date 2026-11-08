@@ -45,6 +45,9 @@ export type CampaignContext = {
   channels: string[];
   budgetMode: 'economy' | 'balanced' | 'video_heavy';
   missionBrain: { category: string; title: string; text: string }[];
+  /** Phase 6 Slice C: the ambassador's own proven result signals, when
+   * enough tracked data exists. Absent = no learnings yet. */
+  learnings?: string[];
 };
 
 const ASSET_COUNTS: Record<CampaignContext['budgetMode'], { social_post: number; email: number; script: number; image: number }> = {
@@ -77,11 +80,19 @@ function buildPrompts(context: CampaignContext) {
     '',
     'MISSION BRAIN (approved knowledge — the only positioning you may use):',
     brain,
+    ...(context.learnings && context.learnings.length
+      ? [
+          '',
+          'WHAT HAS WORKED FOR THIS AMBASSADOR (signals from their own tracked link results — lean into these patterns: favor the winning formats and angles; never quote these numbers inside the assets themselves):',
+          ...context.learnings.map((line) => `- ${line}`),
+        ]
+      : []),
     '',
     `Create this week's campaign. Asset counts for budget mode "${context.budgetMode}": ${counts.social_post} social_post, ${counts.email} email, ${counts.script} script (vertical short-form video scripts), ${counts.image} image (graphic briefs).`,
-    'Assign each asset a channel from the channel list where it fits (scripts → YouTube or TikTok; social_post → its platform; email → Email; image → Instagram or Facebook).',
+    'Assign each asset a channel from the channel list where it fits (scripts → YouTube, TikTok or Instagram when Instagram is in the channel list; social_post → its platform; email → Email; image → Instagram or Facebook).',
     'For email assets, start the body with "Subject: <subject line>" on its own line.',
     'For script assets, write a complete spoken script for a 30–45 second vertical video: hook line first, then the beats, then the CTA to the destination.',
+    'INSTAGRAM SCRIPT CTA (exact rule): a script whose channel is Instagram ends with this exact spoken closing line and nothing after it: "Comment HUB and I\'ll send you the invite." — a comment-keyword CTA instead of the destination-URL CTA. Other channels keep the destination CTA.',
     'For image assets, the body is a precise visual brief a designer or image model can execute (composition, text on graphic, brand feel).',
     'The calendar must cover Mon–Sun and reference asset titles exactly as they appear in the assets array.',
     '',

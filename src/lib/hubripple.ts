@@ -71,3 +71,34 @@ export async function createHubRipplePost(
 export async function getHubRipplePost(apiKey: string, postId: string): Promise<HubRipplePost> {
   return hubRippleFetch(apiKey, `/api/v1/posts/${encodeURIComponent(postId)}`);
 }
+
+export type HubRippleAccountAnalytics = {
+  platform: string;
+  handle: string | null;
+  available: boolean;
+  metrics: Record<'followers' | 'views' | 'likes' | 'comments' | 'shares' | 'reach' | 'impressions', number | null>;
+};
+
+// Account-level native stats (Phase 6 Slice B). These are per-ACCOUNT
+// aggregates from the platforms via HubRipple — deliberately kept apart
+// from the per-publication click truth. Cached in-process for 3 hours:
+// platform stats move slowly and the Analytics page is read often.
+const analyticsCache = new Map<string, { at: number; data: HubRippleAccountAnalytics[] }>();
+const ANALYTICS_TTL_MS = 3 * 60 * 60 * 1000;
+
+export async function getHubRippleAnalytics(
+  connection: HubRippleConnection,
+  days: 7 | 30,
+): Promise<HubRippleAccountAnalytics[] | null> {
+  const cacheKey = `${connection.connectionId}:${days}`;
+  const cached = analyticsCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < ANALYTICS_TTL_MS) return cached.data;
+  try {
+    const result = await hubRippleFetch(connection.apiKey, `/api/v1/analytics?days=${days}`);
+    const accounts = (result as { accounts?: HubRippleAccountAnalytics[] }).accounts ?? [];
+    analyticsCache.set(cacheKey, { at: Date.now(), data: accounts });
+    return accounts;
+  } catch {
+    return null;
+  }
+}

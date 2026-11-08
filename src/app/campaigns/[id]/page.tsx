@@ -30,6 +30,7 @@ type Brief = {
   tone?: string;
   generated_at?: string;
   model?: string;
+  learnings_used?: string[];
   source?: string;
 };
 
@@ -244,6 +245,20 @@ export default async function CampaignDetailPage({ params }: Props) {
                     <b>{brief.core_message}</b>
                   </div>
                 </div>
+                {brief.learnings_used && brief.learnings_used.length > 0 && (
+                  <>
+                    <h3 style={{ fontSize: 14, margin: '18px 0 8px' }}>What your results taught this campaign</h3>
+                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, lineHeight: 1.7, color: 'var(--text-2)' }}>
+                      {brief.learnings_used.map((line, index) => (
+                        <li key={index}>{line}</li>
+                      ))}
+                    </ul>
+                    <p style={{ fontSize: 12.5, color: 'var(--text-4)', margin: '6px 0 0' }}>
+                      Signals from your tracked links, briefed into this generation. See Analytics for the numbers
+                      behind them.
+                    </p>
+                  </>
+                )}
                 {brief.hooks && brief.hooks.length > 0 && (
                   <>
                     <h3 style={{ fontSize: 14, margin: '18px 0 8px' }}>Hooks</h3>

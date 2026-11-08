@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase-server';
 import { AppShell } from '@/components/app/app-shell';
 import { memberNav } from '@/components/app/member-nav';
 import { summarizeAnalytics, type GroupStat } from '@/lib/analytics';
+import { getHubRippleConnection, getHubRippleAnalytics, type HubRippleAccountAnalytics } from '@/lib/hubripple';
 
 export const metadata = { title: 'Analytics' };
 
@@ -122,6 +123,13 @@ export default async function AnalyticsPage({ searchParams }: Props) {
     label: typeLabels[group.key] ?? group.key,
   }));
 
+  // Slice B: account-level native stats via HubRipple (context, clearly
+  // labeled — these are whole-account numbers, not per-post results).
+  const hubRippleConnection = await getHubRippleConnection(orgId);
+  const accountAnalytics: HubRippleAccountAnalytics[] | null = hubRippleConnection
+    ? await getHubRippleAnalytics(hubRippleConnection, window === '7d' ? 7 : 30)
+    : null;
+
   const windows = [
     { key: '7d', label: 'Last 7 days' },
     { key: '30d', label: 'Last 30 days' },
@@ -193,6 +201,48 @@ export default async function AnalyticsPage({ searchParams }: Props) {
             )}
           </section>
         </div>
+
+        {accountAnalytics && accountAnalytics.length > 0 && (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h2>Across your accounts — via HubRipple</h2>
+                <p>
+                  Whole-account numbers the platforms report for the last {window === '7d' ? 7 : 30} days. They
+                  cover everything on the account, not just HubElites posts — context for the click numbers above,
+                  which are yours alone.
+                </p>
+              </div>
+              <span className="pill pill-live">account level</span>
+            </div>
+            <div className="panel-body">
+              <div style={{ display: 'grid', gap: 8 }}>
+                {accountAnalytics.map((account) => (
+                  <div
+                    key={account.platform}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', paddingBottom: 8 }}
+                  >
+                    <b style={{ fontSize: 14.5, textTransform: 'capitalize' }}>{account.platform}</b>
+                    {account.handle && <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>@{account.handle.replace(/^@/, '')}</span>}
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 13, color: 'var(--text-2)' }}>
+                      {account.available ? (
+                        (['followers', 'views', 'likes', 'comments', 'shares', 'reach'] as const)
+                          .filter((metric) => account.metrics[metric] !== null)
+                          .map((metric) => (
+                            <span key={metric}>
+                              {metric} <b>{account.metrics[metric]?.toLocaleString()}</b>
+                            </span>
+                          ))
+                      ) : (
+                        <span style={{ color: 'var(--text-4)' }}>not reported by this platform</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         {summary.totals.publications === 0 ? (
           <section className="panel">
