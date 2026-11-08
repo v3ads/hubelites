@@ -92,7 +92,7 @@ function buildPrompts(context: CampaignContext) {
     'Assign each asset a channel from the channel list where it fits (scripts → YouTube, TikTok or Instagram when Instagram is in the channel list; social_post → its platform; email → Email; image → Instagram or Facebook).',
     'For email assets, start the body with "Subject: <subject line>" on its own line.',
     'For script assets, write a complete spoken script for a 30–45 second vertical video: hook line first, then the beats, then the CTA to the destination.',
-    'INSTAGRAM SCRIPT CTA (exact rule): a script whose channel is Instagram ends with this exact spoken closing line and nothing after it: "Comment HUB and I\'ll send you the invite, or see the link in my bio." — a comment-keyword + bio-link CTA instead of the destination-URL CTA. Other channels keep the destination CTA.',
+    'PLATFORM SCRIPT CTAs (exact rules): a script ends with the comment-keyword closing line for its channel, exactly as written, with nothing after it: Instagram → "Comment HUB and I\'ll send you the invite, or see the link in my bio." · TikTok → "Comment HUB and I\'ll send you the invite, or see the link in my bio." · YouTube → "Comment HUB and I\'ll send you the invite, or check the description for the link." Scripts for any other channel keep the destination CTA. Never use the word "free" in a CTA.',
     'For image assets, the body is a precise visual brief a designer or image model can execute (composition, text on graphic, brand feel).',
     'The calendar must cover Mon–Sun and reference asset titles exactly as they appear in the assets array.',
     '',
