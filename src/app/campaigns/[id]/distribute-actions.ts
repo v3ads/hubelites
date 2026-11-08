@@ -7,6 +7,7 @@ import { composeCaption, isPlatformId } from '@/lib/distribution';
 import { newLinkSlug } from '@/lib/tracked-links';
 import { getHubRippleConnection } from '@/lib/hubripple';
 import { pushPublication } from '@/lib/distribution-sync';
+import { toSpokenScript } from '@/lib/spoken-script';
 
 export type PublicationResult = { ok: true; slug?: string } | { ok: false; error: string };
 
@@ -47,7 +48,7 @@ export async function createPublication(input: {
 
   const { data: asset } = await supabase
     .from('campaign_assets')
-    .select('id, status')
+    .select('id, status, type')
     .eq('id', input.assetId)
     .eq('organization_id', organizationId)
     .maybeSingle();
@@ -75,7 +76,12 @@ export async function createPublication(input: {
 
   const slug = newLinkSlug();
   const trackedUrl = `${APP_URL.replace(/\/$/, '')}/r/${slug}`;
-  const caption = composeCaption(input.caption, trackedUrl);
+  // Script assets store a labeled production document ([HOOK, on camera],
+  // [Beat 1], [CTA]…) — those labels must never reach a public caption
+  // (the first E2E publish carried them onto YouTube/TikTok/Instagram).
+  // The spoken-script cleaner produces exactly the public text.
+  const captionSource = asset.type === 'script' ? toSpokenScript(input.caption, 2000) : input.caption;
+  const caption = composeCaption(captionSource, trackedUrl);
 
   let scheduledAt: string | null = null;
   if (input.scheduledAt) {
