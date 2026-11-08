@@ -94,8 +94,17 @@ export async function getHubRippleAnalytics(
   const cached = analyticsCache.get(cacheKey);
   if (cached && Date.now() - cached.at < ANALYTICS_TTL_MS) return cached.data;
   try {
-    const result = await hubRippleFetch(connection.apiKey, `/api/v1/analytics?days=${days}`);
-    const accounts = (result as { accounts?: HubRippleAccountAnalytics[] }).accounts ?? [];
+    // Own fetch, not hubRippleFetch: that helper is post-shaped (it
+    // requires a `post` field in the response) — the analytics payload
+    // is { days, accounts } and would be thrown away. (Bug found live
+    // 2026-11-08: endpoint returned 200s, the panel stayed hidden.)
+    const res = await fetch(`${HUBRIPPLE_BASE}/api/v1/analytics?days=${days}`, {
+      headers: { Authorization: `Bearer ${connection.apiKey}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) return null;
+    const result = (await res.json().catch(() => null)) as { accounts?: HubRippleAccountAnalytics[] } | null;
+    const accounts = result?.accounts ?? [];
     analyticsCache.set(cacheKey, { at: Date.now(), data: accounts });
     return accounts;
   } catch {
