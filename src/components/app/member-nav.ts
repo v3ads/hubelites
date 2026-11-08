@@ -11,7 +11,7 @@ export function memberNav(activeLabel: string, isSuperAdmin = false): NavGroup[]
         { label: 'Content', icon: 'image', href: '#' },
         { label: 'Calendar', icon: 'calendar', href: '#' },
         { label: 'Prospects', icon: 'users', href: '#' },
-        { label: 'Analytics', icon: 'chart', href: '#' },
+        { label: 'Analytics', icon: 'chart', href: '/analytics', ...mark('Analytics') },
       ],
     },
     {

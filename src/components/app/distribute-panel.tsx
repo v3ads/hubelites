@@ -22,6 +22,7 @@ export type PublicationView = {
   status: string;
   scheduledAt: string | null;
   clicks: number;
+  crawlerClicks: number;
   error: string | null;
   publishedUrls: Record<string, string>;
 };
@@ -206,6 +207,9 @@ export function DistributionPanel({
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span className="pill">{publication.clicks} clicks</span>
+                {publication.crawlerClicks > 0 && (
+                  <span style={{ fontSize: 12, color: 'var(--text-4)' }}>+{publication.crawlerClicks} previews &amp; bots</span>
+                )}
                 <span className={`pill ${publication.status === 'published' ? 'pill-live' : ''}`}>{publication.status}</span>
                 {publication.status === 'queued' && connected && (
                   <button

@@ -12,6 +12,7 @@ import { heygenConfigured } from '@/lib/heygen';
 import { higgsfieldConfigured } from '@/lib/higgsfield';
 import { syncMediaAsset, type MediaState } from '@/lib/media-jobs';
 import { toSpokenScript } from '@/lib/spoken-script';
+import { countClicks } from '@/lib/click-filter';
 
 export const metadata = { title: 'Campaign' };
 // Campaign generation calls an AI model and can take up to ~a minute.
@@ -154,10 +155,11 @@ export default async function CampaignDetailPage({ params }: Props) {
   ]);
   const publicationViews: PublicationView[] = [];
   for (const row of publicationRows ?? []) {
-    const { count } = await supabase
+    const { data: clickRows } = await supabase
       .from('link_clicks')
-      .select('id', { count: 'exact', head: true })
+      .select('user_agent')
       .eq('publication_id', row.id as string);
+    const clickCounts = countClicks((clickRows ?? []).map((click) => click.user_agent as string | null));
     const asset = assetViews.find((view) => view.id === (row.asset_id as string | null));
     publicationViews.push({
       id: row.id as string,
@@ -166,7 +168,8 @@ export default async function CampaignDetailPage({ params }: Props) {
       linkSlug: row.link_slug as string,
       status: row.status as string,
       scheduledAt: (row.scheduled_at as string | null) ?? null,
-      clicks: count ?? 0,
+      clicks: clickCounts.human,
+      crawlerClicks: clickCounts.crawler,
       error: (row.error as string | null) ?? null,
       publishedUrls: (row.published_urls as Record<string, string> | null) ?? {},
     });
@@ -365,7 +368,8 @@ export default async function CampaignDetailPage({ params }: Props) {
               <h2>Distribute</h2>
               <p>
                 Queue approved assets for publishing through HubRipple. The tracked link is live the moment you
-                queue — clicks are counted whether the post has sent or not.
+                queue — clicks are counted whether the post has sent or not. Click counts are people; the
+                platforms' own link-preview fetches are counted separately.
               </p>
             </div>
             <span className={`pill ${hubRippleConnected ? 'pill-live' : ''}`}>
