@@ -154,7 +154,7 @@ export function OnboardingFlow({ initialName = '', email = '' }: { initialName?:
             <>
               <h1>Where should the traffic land?</h1>
               <p>
-                Every call to action HubElites writes will point at this destination, so your syndicated funnel keeps
+                Every call to action HubElites writes will point at this destination, so your Mission 1000 funnel keeps
                 the registration, checkout and attribution.
               </p>
               <div className="onb-fields">

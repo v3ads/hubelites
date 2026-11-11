@@ -72,7 +72,7 @@ const newWay = [
 const faqs = [
   {
     q: 'Does HubElites replace my eStage funnel?',
-    a: 'No. Your Ambassador domain and syndicated Mission 1000 experience stay exactly where they are — registration, webinar, checkout and attribution all still happen there. HubElites owns the layer in front of it: audience, strategy, media, distribution and optimization.',
+    a: 'No. Your Ambassador domain and Mission 1000 experience stay exactly where they are — registration, webinar, checkout and attribution all still happen there. HubElites owns the layer in front of it: audience, strategy, media, distribution and optimization.',
   },
   {
     q: 'What do I actually get each week?',
@@ -241,7 +241,7 @@ export default function HomePage() {
                     <span>00:34</span>
                   </div>
                   <div className="reel-copy">
-                    <b>&ldquo;Build what you actually control.&rdquo;</b>
+                    <b>&ldquo;Build your hub.&rdquo;</b>
                     <span>Vertical video · 9:16</span>
                   </div>
                 </div>
@@ -358,7 +358,7 @@ export default function HomePage() {
                   </span>
                   <div>
                     <b>Your funnel stays yours</b>
-                    <small>HubElites creates demand; your syndicated funnel captures and attributes it.</small>
+                    <small>HubElites creates demand; your Mission 1000 funnel captures and attributes it.</small>
                   </div>
                 </div>
               </div>
@@ -386,17 +386,17 @@ export default function HomePage() {
               </div>
 
               <div className="brief-prompt">
-                Promote Mission 1000 to <b>coaches who are tired of depending on rented social audiences.</b>
+                Promote Mission 1000 to <b>coaches whose audience is scattered across platforms, with no one place of their own to bring them to.</b>
               </div>
 
               <div className="brief-rows">
                 <div>
                   <span>Audience signal</span>
-                  <strong>Ownership anxiety</strong>
+                  <strong>Scattered business</strong>
                 </div>
                 <div>
                   <span>Primary hook</span>
-                  <strong>Build what you control</strong>
+                  <strong>Build your hub</strong>
                 </div>
                 <div>
                   <span>Objection to clear</span>
@@ -480,7 +480,7 @@ export default function HomePage() {
                 HubElites doesn&apos;t replace eStage. <span className="grad-text">It feeds it.</span>
               </h2>
               <p className="lead" style={{ marginTop: 18 }}>
-                Your Ambassador domain and syndicated Mission 1000 experience stay the destination. HubElites owns the
+                Your Ambassador domain and Mission 1000 experience stay the destination. HubElites owns the
                 marketing layer in front of it.
               </p>
             </div>

@@ -18,7 +18,7 @@ export default function TermsPage() {
           HubElites is an independent software platform that helps eStage Ambassadors plan and produce marketing
           campaigns. You choose an audience; HubElites helps generate campaign strategy, content and media, and helps
           you distribute that material to your own channels. Every call to action in material you create points to a
-          destination you control — typically your own Ambassador domain and its syndicated Mission 1000 funnel.
+          destination you control — typically your own Ambassador domain and its Mission 1000 funnel.
         </p>
         <p>
           HubElites is not affiliated with, sponsored by, or endorsed by eStage. Registration, webinar delivery,

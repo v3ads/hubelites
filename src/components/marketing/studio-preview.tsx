@@ -49,7 +49,7 @@ export function StudioPreview() {
               </div>
               <div>
                 <span>Angle</span>
-                <b>Stop renting your audience</b>
+                <b>One hub for a scattered business</b>
               </div>
               <div>
                 <span>Goal</span>
