@@ -50,7 +50,7 @@ export const AI_PRICING_USD_PER_MILLION: Record<string, ModelRate> = {
   'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
   'claude-sonnet-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
   'claude-sonnet-4-5': { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  'openai/gpt-4o-mini': { input: 0.15, output: 0.6 },
+  'openai/gpt-5-mini': { input: 0.25, output: 2 },
 };
 
 /** Used only if ANTHROPIC_MODEL / OPENROUTER_MODEL points at an unlisted model. */

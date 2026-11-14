@@ -143,7 +143,7 @@ type RawGeneration = {
 async function callOpenRouterChat(system: string, user: string): Promise<RawGeneration> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured on the platform.');
-  const model = process.env.OPENROUTER_MODEL ?? 'openai/gpt-4o-mini';
+  const model = process.env.OPENROUTER_MODEL ?? 'openai/gpt-5-mini';
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
